@@ -1,4 +1,22 @@
-# vinext-starter
+# 커리어폴리오
+
+학생 활동 결과물을 누적하고 진로 연결 키워드, 적합도 근거, 다음 심화 활동과 교사용 관찰 단서를 생성하는 웹앱입니다.
+
+## Synology NAS 배포
+
+이 프로젝트는 파일 업로드와 데이터베이스 기능이 있어 Web Station 정적 호스팅이 아닌 **Container Manager 프로젝트**로 실행합니다.
+
+1. NAS의 공유 폴더(예: `/volume1/docker/careerfolio`)에 이 저장소를 복제합니다.
+2. Container Manager → 프로젝트 → 생성 → 기존 `docker-compose.yml` 사용을 선택합니다.
+3. 프로젝트를 빌드하고 실행합니다. 기본 NAS 포트는 `7310`입니다.
+4. DSM 제어판 → 로그인 포털 → 고급 → 역방향 프록시에서 다음 규칙을 만듭니다.
+   - 소스: `HTTPS`, 호스트 `ca.lhsstart.synology.me`, 포트 `443`
+   - 대상: `HTTP`, 호스트 `127.0.0.1`, 포트 `7310`
+5. DSM 제어판 → 보안 → 인증서에서 `*.lhsstart.synology.me`를 포함한 Let's Encrypt 인증서를 발급하고, 설정 메뉴에서 `ca.lhsstart.synology.me` 역방향 프록시에 연결합니다.
+
+데이터베이스와 업로드 파일은 `careerfolio-data` Docker 볼륨에 보존됩니다. 운영 공개 전에는 학생·교사 인증과 권한 분리를 추가하는 것이 필요합니다.
+
+## Starter notes
 
 A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
 

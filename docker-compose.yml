@@ -1,0 +1,16 @@
+services:
+  careerfolio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: careerfolio
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
+    ports:
+      - "${CA_PORT:-7310}:3000"
+    volumes:
+      - careerfolio-data:/data
+
+volumes:
+  careerfolio-data:
