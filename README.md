@@ -16,6 +16,24 @@
 
 데이터베이스와 업로드 파일은 `careerfolio-data` Docker 볼륨에 보존됩니다. 운영 공개 전에는 학생·교사 인증과 권한 분리를 추가하는 것이 필요합니다.
 
+### GitHub 푸시 후 자동 배포
+
+`main` 브랜치에 푸시하면 `.github/workflows/deploy-synology.yml`이 NAS에 SSH로 접속해 `/volume1/docker/careerfolio/scripts/synology-auto-deploy.sh`를 실행합니다. 이 스크립트는 새 커밋만 fast-forward로 받고, 컨테이너를 재빌드한 뒤 `/api/health`가 정상일 때 성공으로 기록합니다.
+
+GitHub 저장소의 Settings → Secrets and variables → Actions에 문학 사이트와 동일한 다음 Repository secrets를 등록합니다.
+
+- `NAS_HOST`: NAS 외부 호스트 이름
+- `NAS_PORT`: NAS SSH 포트
+- `NAS_USER`: 배포 전용 SSH 사용자
+- `NAS_SSH_KEY`: 배포 전용 SSH 비공개 키
+- `NAS_KNOWN_HOSTS`: `ssh-keyscan -p <포트> <호스트>` 결과
+
+배포 계정은 비밀번호 없이 아래 명령 하나만 실행하도록 sudo 권한을 제한합니다.
+
+```text
+/bin/sh /volume1/docker/careerfolio/scripts/synology-auto-deploy.sh
+```
+
 ## Starter notes
 
 A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.

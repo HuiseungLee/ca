@@ -1,0 +1,55 @@
+name: Deploy to Synology NAS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: careerfolio-synology-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Deploy the latest main commit
+        shell: bash
+        env:
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_PORT: ${{ secrets.NAS_PORT }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_SSH_KEY: ${{ secrets.NAS_SSH_KEY }}
+          NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          test -n "$NAS_HOST"
+          test -n "$NAS_PORT"
+          test -n "$NAS_USER"
+          test -n "$NAS_SSH_KEY"
+          test -n "$NAS_KNOWN_HOSTS"
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$NAS_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$NAS_KNOWN_HOSTS" | tr -d '\r' > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+
+          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null
+          ssh-keygen -F "[$NAS_HOST]:$NAS_PORT" -f "$HOME/.ssh/known_hosts" >/dev/null
+
+          ssh -4 \
+            -i "$HOME/.ssh/id_ed25519" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -p "$NAS_PORT" \
+            "$NAS_USER@$NAS_HOST" \
+            'sudo -n /bin/sh /volume1/docker/careerfolio/scripts/synology-auto-deploy.sh'
