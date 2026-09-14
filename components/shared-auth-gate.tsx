@@ -45,7 +45,7 @@ export function SharedAuthGate({ children }: { children: (account: SharedAccount
     setLoading(true); setMessage("");
     try {
       const response = mode === "signup"
-        ? await fetch("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, role, realName: realName.trim(), nickname: nickname.trim(), teacherInviteCode }) })
+        ? await fetch(window.location.hostname.endsWith(".lhsstart.synology.me") ? "https://literature.lhsstart.synology.me/api/signup" : "/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, role, realName: realName.trim(), nickname: nickname.trim(), teacherInviteCode }) })
         : mode === "verify"
           ? await fetch(`${config.url}/auth/v1/verify`, { method: "POST", headers: { apikey: config.key, "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim(), token: verificationCode, type: "email" }) })
           : await fetch(`${config.url}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: config.key, "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });

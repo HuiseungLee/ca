@@ -1,6 +1,9 @@
 import { env } from "cloudflare:workers";
 import { sharedAuthSessionFromCookieHeader } from "./shared-auth";
 
+const DEFAULT_SUPABASE_URL = "https://supabase.lhsstart.synology.me";
+const DEFAULT_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg3NDYwMjEzLCJleHAiOjE5NDUxNDAyMTN9.l_GNRsIFQlkWggULNs4tCmSsLMqNJjjMKA6GjDGkUOQ";
+
 export type SharedUserRole = "teacher" | "student";
 export type SharedUser = { id: string; email: string; role: SharedUserRole; displayName: string; realName: string | null; nickname: string | null };
 type AuthUser = { id?: string; email?: string; user_metadata?: { role?: string; real_name?: string; nickname?: string } };
@@ -9,7 +12,7 @@ type PublicAuthConfig = { url: string; key: string };
 let cachedRemoteConfig: { value: PublicAuthConfig; expiresAt: number } | undefined;
 
 export function supabasePublicConfig() {
-  return { url: env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") ?? "", key: env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "" };
+  return { url: env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") || DEFAULT_SUPABASE_URL, key: env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || DEFAULT_SUPABASE_PUBLISHABLE_KEY };
 }
 
 export function accountServiceUrl(): string {
