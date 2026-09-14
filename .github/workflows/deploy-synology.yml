@@ -29,19 +29,30 @@ jobs:
         run: |
           set -euo pipefail
 
-          test -n "$NAS_HOST"
-          test -n "$NAS_PORT"
-          test -n "$NAS_USER"
-          test -n "$NAS_SSH_KEY"
-          test -n "$NAS_KNOWN_HOSTS"
+          missing_secrets=""
+          [ -n "$NAS_HOST" ] || missing_secrets="$missing_secrets NAS_HOST"
+          [ -n "$NAS_PORT" ] || missing_secrets="$missing_secrets NAS_PORT"
+          [ -n "$NAS_USER" ] || missing_secrets="$missing_secrets NAS_USER"
+          [ -n "$NAS_SSH_KEY" ] || missing_secrets="$missing_secrets NAS_SSH_KEY"
+          [ -n "$NAS_KNOWN_HOSTS" ] || missing_secrets="$missing_secrets NAS_KNOWN_HOSTS"
+          if [ -n "$missing_secrets" ]; then
+            printf '::error title=Missing Actions secrets::Add these Repository secrets:%s\n' "$missing_secrets"
+            exit 1
+          fi
 
           install -m 700 -d "$HOME/.ssh"
           printf '%s\n' "$NAS_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/id_ed25519"
           printf '%s\n' "$NAS_KNOWN_HOSTS" | tr -d '\r' > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
 
-          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null
-          ssh-keygen -F "[$NAS_HOST]:$NAS_PORT" -f "$HOME/.ssh/known_hosts" >/dev/null
+          if ! ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null 2>&1; then
+            echo '::error title=Synology SSH configuration::NAS_SSH_KEY is not a valid SSH private key.'
+            exit 1
+          fi
+          if ! ssh-keygen -F "[$NAS_HOST]:$NAS_PORT" -f "$HOME/.ssh/known_hosts" >/dev/null; then
+            echo '::error title=Synology SSH configuration::NAS_KNOWN_HOSTS does not contain the configured NAS host and port.'
+            exit 1
+          fi
 
           ssh -4 \
             -i "$HOME/.ssh/id_ed25519" \
