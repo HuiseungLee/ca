@@ -1,8 +1,9 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { getDb } from "@/db";
 import { activities } from "@/db/schema";
 import { analyzeActivity } from "@/lib/analyze-activity";
+import { getSharedUserFromRequest } from "@/lib/supabase-auth";
 
 function errorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "결과물을 처리하지 못했습니다.";
@@ -10,9 +11,14 @@ function errorMessage(error: unknown) {
   return message;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const rows = await getDb().select().from(activities).orderBy(desc(activities.createdAt)).limit(50);
+    const user = await getSharedUserFromRequest(request);
+    if (!user) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    const query = getDb().select().from(activities);
+    const rows = user.role === "teacher"
+      ? await query.orderBy(desc(activities.createdAt)).limit(50)
+      : await query.where(eq(activities.ownerId, user.id)).orderBy(desc(activities.createdAt)).limit(50);
     return Response.json({ activities: rows });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 503 });
@@ -21,6 +27,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const user = await getSharedUserFromRequest(request);
+    if (!user) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    if (user.role !== "student") return Response.json({ error: "학생 계정만 결과물을 등록할 수 있습니다." }, { status: 403 });
     const form = await request.formData();
     const title = String(form.get("title") ?? "").trim();
     const career = String(form.get("career") ?? "").trim();
@@ -38,7 +47,7 @@ export async function POST(request: Request) {
       await env.BUCKET.put(fileKey, await file.arrayBuffer(), { httpMetadata: { contentType: file.type || "application/octet-stream" } });
     }
     const analysis = analyzeActivity(title, summary, career);
-    const [activity] = await getDb().insert(activities).values({ id, title, category, career, summary, fileKey, fileName, ...analysis }).returning();
+    const [activity] = await getDb().insert(activities).values({ id, ownerId: user.id, studentName: user.displayName, title, category, career, summary, fileKey, fileName, ...analysis }).returning();
     return Response.json({ activity }, { status: 201 });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });

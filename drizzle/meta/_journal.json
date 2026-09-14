@@ -8,6 +8,13 @@
       "when": 1789038943231,
       "tag": "0000_cool_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789421113005,
+      "tag": "0001_oval_power_man",
+      "breakpoints": true
     }
   ]
 }

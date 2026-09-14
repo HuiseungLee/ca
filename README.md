@@ -2,6 +2,19 @@
 
 학생 활동 결과물을 누적하고 진로 연결 키워드, 적합도 근거, 다음 심화 활동과 교사용 관찰 단서를 생성하는 웹앱입니다.
 
+## 문학·문법·진로 통합 계정
+
+문학 사이트의 Supabase 회원 DB를 사용합니다. 회원가입·이메일 확인·교사 초대 코드 방식이 문학 사이트와 같고, 한 사이트에서 로그인하면 `lhsstart.synology.me`의 문학·문법·진로 하위 도메인에서 같은 계정과 역할을 사용합니다. 진로 화면의 학생·교사 보기는 로그인한 계정 역할에 따라 결정되며 사용자가 임의로 바꿀 수 없습니다.
+
+기본 설정에서는 `ACCOUNT_SERVICE_URL`의 문학 서버에서 공개 인증 설정을 자동으로 받아오므로 별도 복사 없이 작동합니다. 연결 요청을 줄이고 싶다면 NAS의 이 프로젝트 `.env`에 문학 사이트 `.env`의 다음 공개 값을 그대로 복사할 수 있습니다.
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `TEACHER_EMAILS`, `STUDENT_EMAILS` (사용 중인 경우)
+- `ACCOUNT_SERVICE_URL=https://literature.lhsstart.synology.me`
+
+`SUPABASE_SERVICE_ROLE_KEY`와 `TEACHER_INVITE_CODE`는 문학 사이트에만 보관합니다. 세 사이트 모두 HTTPS로 서비스해야 공통 로그인 쿠키가 안전하게 공유됩니다.
+
 ## Synology NAS 배포
 
 이 프로젝트는 파일 업로드와 데이터베이스 기능이 있어 Web Station 정적 호스팅이 아닌 **Container Manager 프로젝트**로 실행합니다.
@@ -14,7 +27,7 @@
    - 대상: `HTTP`, 호스트 `127.0.0.1`, 포트 `7310`
 5. DSM 제어판 → 보안 → 인증서에서 `*.lhsstart.synology.me`를 포함한 Let's Encrypt 인증서를 발급하고, 설정 메뉴에서 `ca.lhsstart.synology.me` 역방향 프록시에 연결합니다.
 
-데이터베이스와 업로드 파일은 `careerfolio-data` Docker 볼륨에 보존됩니다. 운영 공개 전에는 학생·교사 인증과 권한 분리를 추가하는 것이 필요합니다.
+데이터베이스와 업로드 파일은 `careerfolio-data` Docker 볼륨에 보존됩니다. 학생·교사 접근 권한은 공통 계정의 역할로 분리됩니다.
 
 ### GitHub 푸시 후 자동 배포
 

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { SharedAuthGate, type SharedAccount } from "@/components/shared-auth-gate";
 
 type Role = "student" | "teacher";
 type Activity = {
@@ -53,12 +54,12 @@ function FitRing({ score, small = false }: { score: number; small?: boolean }) {
   </div>;
 }
 
-function StudentDashboard({ onOpenUpload, items }: { onOpenUpload: () => void; items: Activity[] }) {
+function StudentDashboard({ onOpenUpload, items, name }: { onOpenUpload: () => void; items: Activity[]; name: string }) {
   const [filter, setFilter] = useState("전체");
   const visible = useMemo(() => items.filter((item) => filter === "전체" || item.subject.includes(filter)), [filter, items]);
   return <>
     <section className="welcome-row">
-      <div><p className="eyebrow">2026학년도 · 2학기</p><h1>민서님의 진로 활동</h1><p className="subcopy">환경공학자를 향한 탐구가 한 걸음씩 쌓이고 있어요.</p></div>
+      <div><p className="eyebrow">2026학년도 · 2학기</p><h1>{name}님의 진로 활동</h1><p className="subcopy">나의 진로를 향한 탐구가 한 걸음씩 쌓이고 있어요.</p></div>
       <Button onClick={onOpenUpload} className="h-11 rounded-xl bg-[#314cc7] px-5 text-[0.94rem] shadow-[0_8px_20px_rgba(49,76,199,.24)] hover:bg-[#243dad]"><Plus className="size-4" /> 새 결과물 등록</Button>
     </section>
 
@@ -157,8 +158,8 @@ function UploadDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCh
   </DialogContent></Dialog>;
 }
 
-export default function Home() {
-  const [role, setRole] = useState<Role>("student");
+function CareerDashboard({ account, logout }: { account: SharedAccount; logout: () => void }) {
+  const role: Role = account.role;
   const [uploadOpen, setUploadOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [items, setItems] = useState<Activity[]>(activities);
@@ -178,17 +179,21 @@ export default function Home() {
     const context = (document as Document & { modelContext?: ModelContext }).modelContext;
     if (!context?.registerTool) return;
     const lifecycle = new AbortController();
-    void Promise.resolve(context.registerTool({ name: "start_submission_creation", title: "새 결과물 등록 시작", description: "학생의 새 계획서나 보고서를 등록할 수 있도록 입력 창을 엽니다.", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute: () => { setRole("student"); setUploadOpen(true); return { status: "submission_form_opened" }; } }, { signal: lifecycle.signal })).catch(() => undefined);
+    void Promise.resolve(context.registerTool({ name: "start_submission_creation", title: "새 결과물 등록 시작", description: "학생의 새 계획서나 보고서를 등록할 수 있도록 입력 창을 엽니다.", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute: () => { if (account.role === "student") setUploadOpen(true); return { status: account.role === "student" ? "submission_form_opened" : "student_account_required" }; } }, { signal: lifecycle.signal })).catch(() => undefined);
     return () => lifecycle.abort();
-  }, []);
+  }, [account.role]);
   return <main className="app-shell">
     <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
       <div className="brand"><span><Compass /></span><b>커리어폴리오</b><button onClick={() => setMobileOpen(false)} aria-label="메뉴 닫기"><X /></button></div>
       <nav aria-label="주요 메뉴">{navItems.map((item) => <button key={item.label} className={item.active ? "active" : ""}><item.icon />{item.label}</button>)}</nav>
       <div className="sidebar-guide"><span><Lightbulb /></span><b>활동 설계 가이드</b><p>막막할 때 질문을 따라 나만의 탐구를 시작해 보세요.</p><button>가이드 열기 <ArrowRight /></button></div>
-      <div className="profile"><div className="avatar">민서</div><div><b>김민서</b><span>2학년 3반</span></div><button aria-label="프로필 메뉴"><MoreHorizontal /></button></div>
+      <div className="profile"><div className="avatar">{account.displayName.slice(0, 2)}</div><div><b>{account.displayName}</b><span>{role === "teacher" ? "교사 계정" : "학생 계정"}</span></div><button aria-label="로그아웃" onClick={logout}><MoreHorizontal /></button></div>
     </aside>
-    <div className="workspace"><header className="topbar"><button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="메뉴 열기"><Menu /></button><div className="mobile-brand"><Compass /><b>커리어폴리오</b></div><Tabs value={role} onValueChange={(value) => setRole(value as Role)}><TabsList className="role-tabs"><TabsTrigger value="student"><GraduationCap /> 학생</TabsTrigger><TabsTrigger value="teacher"><Users /> 교사</TabsTrigger></TabsList></Tabs><div className="top-actions"><button aria-label="알림"><Bell /><i /></button><span /><div><b>{role === "student" ? "김민서" : "한지훈 선생님"}</b><small>{role === "student" ? "환경공학 진로" : "2학년 3반 담임"}</small></div><ChevronDown /></div></header><div className="content-wrap">{role === "student" ? <StudentDashboard onOpenUpload={() => setUploadOpen(true)} items={items} /> : <TeacherDashboard />}</div></div>
+    <div className="workspace"><header className="topbar"><button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="메뉴 열기"><Menu /></button><div className="mobile-brand"><Compass /><b>커리어폴리오</b></div><Tabs value={role}><TabsList className="role-tabs"><TabsTrigger value="student"><GraduationCap /> 학생</TabsTrigger><TabsTrigger value="teacher"><Users /> 교사</TabsTrigger></TabsList></Tabs><div className="top-actions"><button aria-label="알림"><Bell /><i /></button><span /><div><b>{account.displayName}</b><small>{role === "student" ? "학생 계정" : "교사 계정"}</small></div><button className="account-logout" onClick={logout}>로그아웃</button><ChevronDown /></div></header><div className="content-wrap">{role === "student" ? <StudentDashboard name={account.displayName} onOpenUpload={() => setUploadOpen(true)} items={items} /> : <TeacherDashboard />}</div></div>
     <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onSaved={(item) => setItems((current) => [item, ...current])} />
   </main>;
+}
+
+export default function Home() {
+  return <SharedAuthGate>{(account, logout) => <CareerDashboard account={account} logout={logout} />}</SharedAuthGate>;
 }

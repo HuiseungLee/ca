@@ -3,6 +3,7 @@ import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const activities = sqliteTable("activities", {
   id: text("id").primaryKey(),
+  ownerId: text("owner_id").notNull().default(""),
   studentName: text("student_name").notNull().default("김민서"),
   title: text("title").notNull(),
   category: text("category").notNull().default("자율 탐구"),
@@ -17,4 +18,7 @@ export const activities = sqliteTable("activities", {
   fileKey: text("file_key"),
   fileName: text("file_name"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => [index("idx_activities_student_created").on(table.studentName, table.createdAt)]);
+}, (table) => [
+  index("idx_activities_owner_created").on(table.ownerId, table.createdAt),
+  index("idx_activities_student_created").on(table.studentName, table.createdAt),
+]);
