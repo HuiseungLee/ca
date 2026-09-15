@@ -44,20 +44,61 @@ export async function getSharedUserFromRequest(request: Request): Promise<Shared
 }
 
 async function getSharedUserFromToken(token: string): Promise<SharedUser | null> {
+  if (!token) return null;
+
+  const accountServiceUser = await getSharedUserFromAccountService(token);
+  if (accountServiceUser !== undefined) return accountServiceUser;
+
   const { url, key } = await resolvedSupabasePublicConfig();
-  if (!url || !key || !token) return null;
-  const authResponse = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${token}` }, cache: "no-store" });
-  if (!authResponse.ok) return null;
-  const account = await authResponse.json() as AuthUser;
-  if (!account.id || !account.email) return null;
-  const profileResponse = await fetch(`${url}/rest/v1/profiles?id=eq.${encodeURIComponent(account.id)}&select=role,display_name,real_name,nickname`, { headers: { apikey: key, Authorization: `Bearer ${token}` }, cache: "no-store" });
-  const profiles = profileResponse.ok ? await profileResponse.json().catch(() => []) as Profile[] : [];
-  const profile = Array.isArray(profiles) ? profiles[0] : undefined;
-  const role = fixedRole(account.email) ?? normalizeRole(profile?.role) ?? (account.user_metadata?.role === "student" ? "student" : null);
-  if (!role) return null;
-  const realName = profile?.real_name ?? account.user_metadata?.real_name ?? null;
-  const nickname = profile?.nickname ?? account.user_metadata?.nickname ?? null;
-  return { id: account.id, email: account.email, role, realName, nickname, displayName: profile?.display_name ?? nickname ?? realName ?? account.email };
+  if (!url || !key) return null;
+  try {
+    const authResponse = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${token}` }, cache: "no-store" });
+    if (!authResponse.ok) return null;
+    const account = await authResponse.json() as AuthUser;
+    if (!account.id || !account.email) return null;
+    const profileResponse = await fetch(`${url}/rest/v1/profiles?id=eq.${encodeURIComponent(account.id)}&select=role,display_name,real_name,nickname`, { headers: { apikey: key, Authorization: `Bearer ${token}` }, cache: "no-store" });
+    const profiles = profileResponse.ok ? await profileResponse.json().catch(() => []) as Profile[] : [];
+    const profile = Array.isArray(profiles) ? profiles[0] : undefined;
+    const role = fixedRole(account.email) ?? normalizeRole(profile?.role) ?? (account.user_metadata?.role === "student" ? "student" : null);
+    if (!role) return null;
+    const realName = profile?.real_name ?? account.user_metadata?.real_name ?? null;
+    const nickname = profile?.nickname ?? account.user_metadata?.nickname ?? null;
+    return { id: account.id, email: account.email, role, realName, nickname, displayName: profile?.display_name ?? nickname ?? realName ?? account.email };
+  } catch {
+    return null;
+  }
+}
+
+async function getSharedUserFromAccountService(token: string): Promise<SharedUser | null | undefined> {
+  try {
+    const response = await fetch(`${accountServiceUrl()}/api/session`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (!response.ok) return undefined;
+    const payload = await response.json() as { user?: unknown };
+    if (!("user" in payload)) return undefined;
+    if (payload.user === null) return null;
+    if (!payload.user || typeof payload.user !== "object") return undefined;
+
+    const user = payload.user as Partial<SharedUser>;
+    const role = normalizeRole(user.role);
+    if (typeof user.id !== "string" || typeof user.email !== "string" || !role) {
+      return undefined;
+    }
+    const realName = typeof user.realName === "string" ? user.realName : null;
+    const nickname = typeof user.nickname === "string" ? user.nickname : null;
+    return {
+      id: user.id,
+      email: user.email,
+      role,
+      displayName: typeof user.displayName === "string" ? user.displayName : nickname ?? realName ?? user.email,
+      realName,
+      nickname,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function fixedRole(email: string): SharedUserRole | null {

@@ -20,6 +20,10 @@ for required_command in git docker curl; do
   fi
 done
 
+if ! docker network inspect lhsstart-shared >/dev/null 2>&1; then
+  docker network create lhsstart-shared >/dev/null
+fi
+
 mkdir -p "$STATE_DIR"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] A deployment is already running."
