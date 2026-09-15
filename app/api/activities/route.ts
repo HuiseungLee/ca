@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { getDb } from "@/db";
 import { activities } from "@/db/schema";
 import { analyzeActivity } from "@/lib/analyze-activity";
-import { getSharedUserFromRequest } from "@/lib/supabase-auth";
+import { requireProfile } from "@/lib/auth";
 
 function errorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "결과물을 처리하지 못했습니다.";
@@ -13,12 +13,11 @@ function errorMessage(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    const user = await getSharedUserFromRequest(request);
-    if (!user) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
-    const query = getDb().select().from(activities);
-    const rows = user.role === "teacher"
-      ? await query.orderBy(desc(activities.createdAt)).limit(50)
-      : await query.where(eq(activities.ownerId, user.id)).orderBy(desc(activities.createdAt)).limit(50);
+    const authenticated = await requireProfile(request);
+    if (!authenticated) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    const rows = authenticated.profile.role === "teacher"
+      ? await getDb().select().from(activities).orderBy(desc(activities.createdAt)).limit(100)
+      : await getDb().select().from(activities).where(eq(activities.ownerId, authenticated.profile.id)).orderBy(desc(activities.createdAt)).limit(50);
     return Response.json({ activities: rows });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 503 });
@@ -27,13 +26,15 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await getSharedUserFromRequest(request);
-    if (!user) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
-    if (user.role !== "student") return Response.json({ error: "학생 계정만 결과물을 등록할 수 있습니다." }, { status: 403 });
+    const authenticated = await requireProfile(request);
+    if (!authenticated) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
     const form = await request.formData();
     const title = String(form.get("title") ?? "").trim();
-    const career = String(form.get("career") ?? "").trim();
-    const summary = String(form.get("summary") ?? "").trim();
+    const career = String(form.get("career") ?? authenticated.profile.career).trim();
+    const formId = String(form.get("formId") ?? "").trim() || null;
+    let answers: Record<string, string> = {};
+    try { answers = JSON.parse(String(form.get("answers") ?? "{}")) as Record<string, string>; } catch { answers = {}; }
+    const summary = String(form.get("summary") ?? "").trim() || Object.values(answers).filter(Boolean).join("\n\n");
     const category = String(form.get("category") ?? "자율 탐구").trim();
     const file = form.get("file");
     if (!title || !career || !summary) return Response.json({ error: "제목, 진로 분야, 핵심 내용을 모두 입력해 주세요." }, { status: 400 });
@@ -44,10 +45,11 @@ export async function POST(request: Request) {
     if (file instanceof File && file.size > 0) {
       fileKey = `activities/${id}/${file.name.replace(/[^\p{L}\p{N}._-]/gu, "-")}`;
       fileName = file.name;
+      if (!env.BUCKET) return Response.json({ error: "파일 저장소가 연결되지 않았습니다." }, { status: 503 });
       await env.BUCKET.put(fileKey, await file.arrayBuffer(), { httpMetadata: { contentType: file.type || "application/octet-stream" } });
     }
     const analysis = analyzeActivity(title, summary, career);
-    const [activity] = await getDb().insert(activities).values({ id, ownerId: user.id, studentName: user.displayName, title, category, career, summary, fileKey, fileName, ...analysis }).returning();
+    const [activity] = await getDb().insert(activities).values({ id, ownerId: authenticated.profile.id, studentName: authenticated.profile.displayName, formId, title, category, career, summary, answers, fileKey, fileName, ...analysis }).returning();
     return Response.json({ activity }, { status: 201 });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });

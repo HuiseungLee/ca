@@ -7,6 +7,7 @@ const config = "dist/server/wrangler.json";
 const stateDirectory = "/data";
 const migrationMarker = `${stateDirectory}/.careerfolio-schema-v1`;
 const sharedAccountMigrationMarker = `${stateDirectory}/.careerfolio-schema-v2`;
+const activityWorkflowMigrationMarker = `${stateDirectory}/.careerfolio-schema-v3`;
 
 if (!existsSync(migrationMarker)) {
   const migration = spawnSync(node, [
@@ -32,6 +33,19 @@ if (!existsSync(sharedAccountMigrationMarker)) {
 
   if (migration.status !== 0) process.exit(migration.status ?? 1);
   writeFileSync(sharedAccountMigrationMarker, new Date().toISOString(), "utf8");
+}
+
+if (!existsSync(activityWorkflowMigrationMarker)) {
+  const migration = spawnSync(node, [
+    "--import", "./scripts/sites-env.mjs", wrangler,
+    "d1", "execute", "DB", "--local",
+    "--config", config,
+    "--persist-to", stateDirectory,
+    "--file", "drizzle/0002_sad_inertia.sql",
+  ], { stdio: "inherit", env: process.env });
+
+  if (migration.status !== 0) process.exit(migration.status ?? 1);
+  writeFileSync(activityWorkflowMigrationMarker, new Date().toISOString(), "utf8");
 }
 
 const variableArguments = [];

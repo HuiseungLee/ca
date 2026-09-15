@@ -15,6 +15,13 @@
       "when": 1789421113005,
       "tag": "0001_oval_power_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789465923957,
+      "tag": "0002_sad_inertia",
+      "breakpoints": true
     }
   ]
 }
