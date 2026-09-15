@@ -19,6 +19,18 @@ export function accountServiceUrl(): string {
   return (env.ACCOUNT_SERVICE_URL || "https://literature.lhsstart.synology.me").replace(/\/$/, "");
 }
 
+export async function accountServiceAvailable(): Promise<boolean> {
+  try {
+    const response = await fetch(`${accountServiceUrl()}/api/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(3000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function resolvedSupabasePublicConfig(): Promise<PublicAuthConfig> {
   const direct = supabasePublicConfig();
   if (direct.url && direct.key) return direct;

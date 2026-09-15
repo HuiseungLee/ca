@@ -9,7 +9,7 @@ services:
       TZ: Asia/Seoul
       NEXT_PUBLIC_SUPABASE_URL: "${NEXT_PUBLIC_SUPABASE_URL:-}"
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}"
-      ACCOUNT_SERVICE_URL: "${ACCOUNT_SERVICE_URL:-http://literature-ai:3000}"
+      ACCOUNT_SERVICE_URL: "http://literature-ai:3000"
       TEACHER_EMAILS: "${TEACHER_EMAILS:-lhsstart@gmail.com,admin@admin.com}"
       STUDENT_EMAILS: "${STUDENT_EMAILS:-stu01@st.com}"
     ports:

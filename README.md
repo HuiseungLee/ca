@@ -11,7 +11,8 @@
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `TEACHER_EMAILS`, `STUDENT_EMAILS` (사용 중인 경우)
-- `ACCOUNT_SERVICE_URL=https://literature.lhsstart.synology.me`
+
+NAS에서는 문학 컨테이너와 `lhsstart-shared` Docker 내부망으로 연결됩니다. 이 내부 주소는 `docker-compose.yml`에 고정되어 있으므로 `.env`에서 바꾸지 않습니다.
 
 `SUPABASE_SERVICE_ROLE_KEY`와 `TEACHER_INVITE_CODE`는 문학 사이트에만 보관합니다. 세 사이트 모두 HTTPS로 서비스해야 공통 로그인 쿠키가 안전하게 공유됩니다.
 
