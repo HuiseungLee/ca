@@ -2039,6 +2039,53 @@ button {
     justify-self: end;
   }
 }
+
+.form-select { width: 100%; min-height: 42px; border: 1px solid #d9dfeb; border-radius: 10px; background: #fff; padding: 0 12px; font-size: .9rem; }
+.distribution-editor { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 18px 0 24px; padding: 18px; border-radius: 14px; background: #f6f8fc; }
+.distribution-editor > div { display: grid; gap: 8px; align-content: start; }
+.distribution-targets { grid-column: 1/-1; }
+.distribution-targets > div,.selection-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; max-height: 220px; overflow: auto; }
+.distribution-targets label,.selection-list label,.project-admin-list label { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 8px 10px; border: 1px solid #e2e6ef; border-radius: 10px; background: #fff; }
+.teacher-mode-tabs { display: flex; gap: 8px; margin: 20px 0; overflow-x: auto; }
+.teacher-mode-tabs button { display: flex; align-items: center; gap: 7px; min-height: 42px; white-space: nowrap; border: 1px solid #dfe4ef; border-radius: 12px; background: #fff; padding: 0 15px; font-weight: 700; }
+.teacher-mode-tabs button.active { border-color: #4058c5; background: #4058c5; color: #fff; }
+.teacher-mode-tabs svg,.edit-activity-button svg { width: 17px; }
+.clickable-activity { cursor: pointer; transition: transform .15s ease,box-shadow .15s ease; }
+.clickable-activity:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(34,49,91,.08); }
+.student-link { border: 0; background: transparent; padding: 0; color: #263c9b; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.student-progress-list { margin-top: 28px; }
+.student-progress-list > button { display: grid; grid-template-columns: auto minmax(140px,1fr) auto auto auto; align-items: center; gap: 14px; width: 100%; border: 0; border-top: 1px solid #edf0f5; background: transparent; padding: 14px 4px; text-align: left; }
+.student-progress-list > button > div { display: grid; gap: 3px; }
+.student-progress-list small { color: #7b8495; }
+.student-avatar { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: #e9edff; color: #3c52ba; font-weight: 800; }
+.trajectory { border-radius: 999px; padding: 5px 9px; background: #fff1df; color: #9a632b; font-size: .75rem; font-weight: 800; }
+.trajectory.good { background: #e5f5ec; color: #287452; }
+.management-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+.management-card { display: grid; gap: 12px; align-content: start; border: 1px solid #dfe4ed; border-radius: 18px; background: #fff; padding: 24px; }
+.saved-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.saved-chips span { border-radius: 999px; background: #eef1fb; padding: 6px 10px; font-size: .78rem; }
+.project-admin-list,.notice-admin-list { display: grid; gap: 12px; margin-top: 8px; }
+.project-admin-list > div,.notice-admin-list > div { display: grid; gap: 7px; border-top: 1px solid #e8ebf2; padding-top: 12px; }
+.project-admin-list > div > span,.notice-admin-list time { color: #768096; font-size: .78rem; }
+.manager-message { color: #324ab5; font-weight: 700; }
+.activity-detail-body { display: grid; gap: 16px; padding: 6px 0; }
+.activity-detail-body > div { display: grid; gap: 7px; }
+.analysis-note { border-radius: 13px; background: #f2f5ff; padding: 15px; }
+.analysis-note.teacher { background: #fff7e9; }
+.analysis-note p { margin: 5px 0 0; color: #5e687d; line-height: 1.65; }
+.portfolio-record-list { display: grid; gap: 10px; }
+.portfolio-record-list > button { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 14px; border: 1px solid #e1e5ee; border-radius: 14px; background: #fff; padding: 16px; text-align: left; }
+.portfolio-record-list h3,.portfolio-record-list p { margin: 4px 0 0; }
+.portfolio-record-list p { max-width: 560px; overflow: hidden; color: #768096; text-overflow: ellipsis; white-space: nowrap; }
+.portfolio-record-list span { color: #4a5db7; font-size: .75rem; font-weight: 800; }
+.edit-activity-button { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid #dfe4ee; border-radius: 10px; background: #fff; color: #53607a; }
+.project-card-grid { display: grid; gap: 10px; }
+.project-card-grid article { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 14px; border: 1px solid #e0e5ef; border-radius: 14px; padding: 16px; }
+.project-card-grid article > svg { color: #4058c5; }
+.project-card-grid h3,.project-card-grid p { margin: 0; }
+.project-card-grid p { margin-top: 4px; color: #778197; }
+@media (max-width: 850px) { .management-grid { grid-template-columns: 1fr; } .student-progress-list > button { grid-template-columns: auto 1fr auto; } .trajectory { grid-column: 2; } .student-progress-list strong { grid-column: 3; grid-row: 1; } }
+@media (max-width: 640px) { .distribution-editor,.distribution-targets > div,.selection-list { grid-template-columns: 1fr; } .project-card-grid article { grid-template-columns: auto 1fr; } .project-card-grid button { grid-column: 1/-1; } }
 .public-read-label {
   display: flex !important;
   align-items: center;

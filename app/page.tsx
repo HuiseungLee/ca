@@ -10,12 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { saveSharedAuthSession } from "@/lib/shared-auth";
 
 type PublicForm = { id: string; title: string; description: string; category: string; questions: Array<{ id: string; label: string; type: string; required: boolean }> };
+type PublicAnnouncement = { id: string; title: string; content: string; createdAt: string };
 
 const fallbackForms: PublicForm[] = [{
   id: "activity-report-basic",
   title: "진로 연계 활동 보고서",
   description: "활동 동기부터 탐구 과정, 배운 점과 다음 계획까지 차근차근 기록합니다.",
-  category: "공통 활동지",
+  category: "공통 과제",
   questions: [
     { id: "q1", label: "이 활동을 시작한 이유는 무엇인가요?", type: "long_text", required: true },
     { id: "q2", label: "활동 과정에서 직접 조사하거나 시도한 내용을 적어주세요.", type: "long_text", required: true },
@@ -93,6 +94,7 @@ export default function PublicHome() {
   const [authOpen, setAuthOpen] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [forms, setForms] = useState<PublicForm[]>(fallbackForms);
+  const [announcements, setAnnouncements] = useState<PublicAnnouncement[]>([]);
 
   useEffect(() => {
     fetch("/api/auth/session").then((response) => setSignedIn(response.ok)).catch(() => undefined);
@@ -100,6 +102,11 @@ export default function PublicHome() {
       if (!response.ok) return;
       const payload = await response.json() as { forms?: PublicForm[] };
       if (payload.forms?.length) setForms(payload.forms);
+    }).catch(() => undefined);
+    fetch("/api/announcements").then(async (response) => {
+      if (!response.ok) return;
+      const payload = await response.json() as { announcements?: PublicAnnouncement[] };
+      setAnnouncements(payload.announcements ?? []);
     }).catch(() => undefined);
   }, []);
 
@@ -112,11 +119,7 @@ export default function PublicHome() {
       <div className="hero-board"><div className="board-head"><span>나의 탐구 흐름</span><b>환경공학</b></div><div className="journey-line"><i /><div><small>첫 탐구</small><b>미세플라스틱의 생태 영향</b></div><i /><div><small>확장 활동</small><b>지역 하천 시료 비교</b></div><i className="future" /><div><small>다음 제안</small><b>정화 소재 효율 실험</b></div></div><div className="board-insight"><Compass /><p><b>진로 연결도 87%</b>환경 문제를 데이터로 해석하는 역량이 꾸준히 성장하고 있어요.</p></div></div>
     </section>
 
-    <section id="notices" className="public-section"><div className="public-section-head"><div><span><Megaphone /> 알림</span><h2>공지사항</h2></div><p>로그인하지 않아도 중요한 일정과 안내를 확인할 수 있습니다.</p></div><div className="notice-grid">
-      <article className="notice-card important"><span>중요</span><time>2026. 09. 15</time><h3>2학기 진로 연계 활동 보고서 안내</h3><p>수업·동아리·자율 활동 중 진로와 연결해 탐구한 경험을 기록해 주세요.</p><a href="#forms">활동지 확인 <ArrowRight /></a></article>
-      <article className="notice-card"><span>안내</span><time>2026. 09. 12</time><h3>좋은 활동 기록은 과정이 보입니다</h3><p>결과만 적기보다 궁금했던 점, 시도한 방법, 예상과 달랐던 점을 함께 적어보세요.</p></article>
-      <article className="notice-card"><span>일정</span><time>2026. 09. 10</time><h3>9월 진로 상담 주간 운영</h3><p>누적 활동을 확인한 뒤 상담에서 함께 이야기하고 싶은 질문을 준비해 주세요.</p></article>
-    </div></section>
+    <section id="notices" className="public-section"><div className="public-section-head"><div><span><Megaphone /> 알림</span><h2>공지사항</h2></div><p>로그인하지 않아도 중요한 일정과 안내를 확인할 수 있습니다.</p></div><div className="notice-grid">{announcements.length ? announcements.map((notice, index) => <article className={`notice-card ${index === 0 ? "important" : ""}`} key={notice.id}><span>{index === 0 ? "최신" : "안내"}</span><time>{new Intl.DateTimeFormat("ko-KR").format(new Date(notice.createdAt))}</time><h3>{notice.title}</h3><p>{notice.content}</p>{index === 0 && <a href="#forms">활동지 확인 <ArrowRight /></a>}</article>) : <article className="notice-card"><span>안내</span><h3>등록된 공지사항이 없습니다</h3><p>새로운 안내가 등록되면 이곳에서 확인할 수 있습니다.</p></article>}</div></section>
 
     <section id="forms" className="public-section form-library"><div className="public-section-head"><div><span><ClipboardList /> 자료실</span><h2>활동지 양식</h2></div><p>문항은 교사가 활동 목적에 맞게 수정하고 배포합니다.</p></div><div className="public-form-grid">
       {forms.map((form) => <article className="public-form-card" key={form.id}><div className="form-card-icon"><BookOpenCheck /></div><span>{form.category}</span><h3>{form.title}</h3><p>{form.description}</p><ol>{form.questions.map((question) => <li key={question.id}>{question.label}{question.required && <small> 필수</small>}</li>)}</ol><div><span className="public-read-label"><FileDown /> 로그인 없이 전체 문항 조회 중</span><Button onClick={() => signedIn ? window.location.assign("/dashboard") : setAuthOpen(true)}>{signedIn ? "작성하기" : "로그인 후 작성"}<ArrowRight /></Button></div></article>)}

@@ -27,6 +27,9 @@ export const activityForms = sqliteTable("activity_forms", {
   category: text("category").notNull().default("공통 활동지"),
   status: text("status").notNull().default("draft"),
   questions: text("questions", { mode: "json" }).$type<FormQuestion[]>().notNull().default([]),
+  distributionMode: text("distribution_mode").notNull().default("all"),
+  targetIds: text("target_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  projectId: text("project_id"),
   updatedBy: text("updated_by"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
@@ -50,8 +53,40 @@ export const activities = sqliteTable("activities", {
   teacherClue: text("teacher_clue").notNull().default(""),
   fileKey: text("file_key"),
   fileName: text("file_name"),
+  revisedAt: text("revised_at").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [
   index("idx_activities_student_created").on(table.studentName, table.createdAt),
   index("idx_activities_owner_created").on(table.ownerId, table.createdAt),
 ]);
+
+export const announcements = sqliteTable("announcements", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  content: text("content").notNull().default(""),
+  status: text("status").notNull().default("published"),
+  authorId: text("author_id").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("idx_announcements_status_created").on(table.status, table.createdAt)]);
+
+export const studentGroups = sqliteTable("student_groups", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  memberIds: text("member_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  createdBy: text("created_by").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const projects = sqliteTable("projects", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  status: text("status").notNull().default("open"),
+  applicantIds: text("applicant_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  selectedIds: text("selected_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  createdBy: text("created_by").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("idx_projects_status_created").on(table.status, table.createdAt)]);

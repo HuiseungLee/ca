@@ -8,6 +8,7 @@ const stateDirectory = "/data";
 const migrationMarker = `${stateDirectory}/.careerfolio-schema-v1`;
 const sharedAccountMigrationMarker = `${stateDirectory}/.careerfolio-schema-v2`;
 const activityWorkflowMigrationMarker = `${stateDirectory}/.careerfolio-schema-v3`;
+const teacherWorkflowMigrationMarker = `${stateDirectory}/.careerfolio-schema-v4`;
 
 if (!existsSync(migrationMarker)) {
   const migration = spawnSync(node, [
@@ -46,6 +47,19 @@ if (!existsSync(activityWorkflowMigrationMarker)) {
 
   if (migration.status !== 0) process.exit(migration.status ?? 1);
   writeFileSync(activityWorkflowMigrationMarker, new Date().toISOString(), "utf8");
+}
+
+if (!existsSync(teacherWorkflowMigrationMarker)) {
+  const migration = spawnSync(node, [
+    "--import", "./scripts/sites-env.mjs", wrangler,
+    "d1", "execute", "DB", "--local",
+    "--config", config,
+    "--persist-to", stateDirectory,
+    "--file", "drizzle/0003_old_brother_voodoo.sql",
+  ], { stdio: "inherit", env: process.env });
+
+  if (migration.status !== 0) process.exit(migration.status ?? 1);
+  writeFileSync(teacherWorkflowMigrationMarker, new Date().toISOString(), "utf8");
 }
 
 const variableArguments = [];

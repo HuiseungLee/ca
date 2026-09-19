@@ -12,11 +12,14 @@ import {
   ClipboardCheck,
   Compass,
   FileText,
+  FolderKanban,
   GraduationCap,
   LayoutDashboard,
   Lightbulb,
   LogOut,
   Menu,
+  Megaphone,
+  Pencil,
   Plus,
   Save,
   Settings2,
@@ -25,9 +28,11 @@ import {
   Trash2,
   UploadCloud,
   Users,
+  UserCheck,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -66,9 +71,13 @@ type ActivityForm = {
   category: string;
   status: string;
   questions: Question[];
+  distributionMode: "all" | "group" | "individual";
+  targetIds: string[];
+  projectId?: string | null;
 };
 type Activity = {
   id: string;
+  ownerId?: string;
   title: string;
   category: string;
   createdAt: string;
@@ -79,7 +88,15 @@ type Activity = {
   teacherClue?: string;
   studentName?: string;
   career?: string;
+  answers?: Record<string, string>;
+  evidence?: string;
+  formId?: string | null;
+  summary?: string;
 };
+type StudentRecord = Profile & { activities: Activity[] };
+type StudentGroup = { id: string; name: string; memberIds: string[] };
+type Project = { id: string; title: string; description: string; status: string; applicantIds: string[]; selectedIds: string[] };
+type Announcement = { id: string; title: string; content: string; status: string; createdAt: string };
 type StudentSection = "today" | "results" | "career" | "growth";
 
 function FitRing({ score }: { score: number }) {
@@ -128,12 +145,14 @@ function StudentDashboard({
   forms,
   onWrite,
   onEditProfile,
+  onSelectActivity,
 }: {
   profile: Profile;
   items: Activity[];
   forms: ActivityForm[];
   onWrite: (form: ActivityForm) => void;
   onEditProfile: () => void;
+  onSelectActivity: (activity: Activity) => void;
 }) {
   const average = items.length
     ? Math.round(
@@ -160,7 +179,7 @@ function StudentDashboard({
             disabled={!forms.length}
             className="h-11 rounded-xl bg-[#314cc7] px-5"
           >
-            <Plus /> 새 보고서 작성
+            <Plus /> 개별 탐구 과제 작성
           </Button>
         </div>
       </section>
@@ -231,7 +250,7 @@ function StudentDashboard({
         {items.length ? (
           <div className="activity-list">
             {items.map((activity) => (
-              <article className="activity-row" key={activity.id}>
+              <article className="activity-row clickable-activity" key={activity.id} onClick={() => onSelectActivity(activity)}>
                 <div className="file-icon">
                   <FileText />
                 </div>
@@ -283,9 +302,11 @@ function StudentDashboard({
 function ResultsView({
   items,
   onWrite,
+  onSelect,
 }: {
   items: Activity[];
   onWrite: () => void;
+  onSelect: (activity: Activity) => void;
 }) {
   const completed = items.filter((item) => item.status === "분석 완료").length;
   const average = items.length
@@ -304,7 +325,7 @@ function ResultsView({
           </p>
         </div>
         <Button onClick={onWrite} className="h-11 rounded-xl bg-[#314cc7] px-5">
-          <Plus /> 새 보고서 작성
+          <Plus /> 개별 탐구 과제 작성
         </Button>
       </section>
       <section className="section-summary-grid">
@@ -334,7 +355,7 @@ function ResultsView({
         {items.length ? (
           <div className="activity-list">
             {items.map((activity) => (
-              <article className="activity-row" key={activity.id}>
+              <article className="activity-row clickable-activity" key={activity.id} onClick={() => onSelect(activity)}>
                 <div className="file-icon">
                   <FileText />
                 </div>
@@ -365,7 +386,7 @@ function ResultsView({
                     <Check /> {activity.status}
                   </span>
                 </div>
-                <ChevronRight className="text-[#98a1b5]" />
+                <button className="edit-activity-button" aria-label="결과물 수정"><Pencil /></button>
               </article>
             ))}
           </div>
@@ -387,17 +408,26 @@ function CareerView({
   items,
   onEditProfile,
   onWrite,
+  projects,
+  onProjectApplied,
 }: {
   profile: Profile;
   items: Activity[];
   onEditProfile: () => void;
   onWrite: () => void;
+  projects: Project[];
+  onProjectApplied: (project: Project) => void;
 }) {
   const keywords = [...new Set(items.flatMap((item) => item.keywords))].slice(
     0,
     8,
   );
   const latest = items[0];
+  async function apply(project: Project) {
+    const response = await fetch("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "apply", id: project.id }) });
+    const payload = await response.json() as { project?: Project };
+    if (payload.project) onProjectApplied(payload.project);
+  }
   return (
     <>
       <section className="welcome-row">
@@ -483,6 +513,10 @@ function CareerView({
           </article>
         </div>
       </section>
+      <section className="pathway-section project-opportunities">
+        <div className="section-heading"><div><h2>참가 가능한 프로젝트</h2><p>관심 있는 프로젝트에 신청하면 교사가 선발 후 전용 활동지를 배포할 수 있습니다.</p></div></div>
+        <div className="project-card-grid">{projects.filter((project) => project.status === "open").map((project) => { const applied = project.applicantIds.includes(profile.id); const selected = project.selectedIds.includes(profile.id); return <article key={project.id}><FolderKanban /><div><h3>{project.title}</h3><p>{project.description}</p></div><Button variant={applied ? "outline" : "default"} disabled={applied} onClick={() => apply(project)}>{selected ? "선발 완료" : applied ? "신청 완료" : "참가 신청"}</Button></article>; })}{!projects.some((project) => project.status === "open") && <p className="empty-copy">현재 참가 신청을 받는 프로젝트가 없습니다.</p>}</div>
+      </section>
     </>
   );
 }
@@ -567,17 +601,26 @@ function GrowthView({ items }: { items: Activity[] }) {
 
 function FormManager({
   forms,
+  students,
+  groups,
+  projects,
   onSaved,
 }: {
   forms: ActivityForm[];
+  students: StudentRecord[];
+  groups: StudentGroup[];
+  projects: Project[];
   onSaved: (form: ActivityForm) => void;
 }) {
   const blank = (): ActivityForm => ({
     id: "",
     title: "새 활동 보고서",
     description: "",
-    category: "공통 활동지",
+    category: "공통 과제",
     status: "draft",
+    distributionMode: "all",
+    targetIds: [],
+    projectId: null,
     questions: [
       { id: crypto.randomUUID(), label: "", type: "long_text", required: true },
     ],
@@ -679,11 +722,12 @@ function FormManager({
           </div>
           <div>
             <Label htmlFor="form-category">분류</Label>
-            <Input
+            <select
+              className="form-select"
               id="form-category"
               value={draft.category}
               onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-            />
+            ><option>공통 과제</option><option>진로 탐색 과제</option><option>심화 탐구 과제</option><option>프로젝트 과제</option><option>개별 탐구 과제</option></select>
           </div>
           <div className="wide">
             <Label htmlFor="form-description">안내 문구</Label>
@@ -696,6 +740,11 @@ function FormManager({
               }
             />
           </div>
+        </div>
+        <div className="distribution-editor">
+          <div><Label htmlFor="distribution-mode">배포 대상</Label><select id="distribution-mode" className="form-select" value={draft.distributionMode} onChange={(e) => setDraft({ ...draft, distributionMode: e.target.value as ActivityForm["distributionMode"], targetIds: [] })}><option value="all">전체 학생</option><option value="group">특정 그룹</option><option value="individual">개별 학생</option></select></div>
+          {draft.category === "프로젝트 과제" && <div><Label htmlFor="form-project">연결 프로젝트</Label><select id="form-project" className="form-select" value={draft.projectId ?? ""} onChange={(e) => setDraft({ ...draft, projectId: e.target.value || null })}><option value="">연결 안 함</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.title}</option>)}</select>{draft.projectId && <Button type="button" variant="outline" size="sm" onClick={() => { const project = projects.find((item) => item.id === draft.projectId); setDraft({ ...draft, distributionMode: "individual", targetIds: project?.selectedIds ?? [] }); }}>선발 학생 불러오기</Button>}</div>}
+          {draft.distributionMode !== "all" && <div className="distribution-targets"><Label>{draft.distributionMode === "group" ? "배포할 그룹" : "배포할 학생"}</Label><div>{(draft.distributionMode === "group" ? groups : students).map((target) => <label key={target.id}><Checkbox checked={draft.targetIds.includes(target.id)} onCheckedChange={(checked) => setDraft({ ...draft, targetIds: checked ? [...draft.targetIds, target.id] : draft.targetIds.filter((id) => id !== target.id) })} /><span>{"name" in target ? target.name : target.displayName}</span></label>)}</div></div>}
         </div>
         <div className="question-editor">
           <div className="question-head">
@@ -786,12 +835,61 @@ function FormManager({
 function TeacherDashboard({
   forms,
   activities,
+  students,
+  groups,
+  projects,
+  announcements,
   onFormSaved,
+  onGroupSaved,
+  onProjectSaved,
+  onAnnouncementSaved,
 }: {
   forms: ActivityForm[];
   activities: Activity[];
+  students: StudentRecord[];
+  groups: StudentGroup[];
+  projects: Project[];
+  announcements: Announcement[];
   onFormSaved: (form: ActivityForm) => void;
+  onGroupSaved: (group: StudentGroup) => void;
+  onProjectSaved: (project: Project) => void;
+  onAnnouncementSaved: (announcement: Announcement) => void;
 }) {
+  const [tab, setTab] = useState<"overview" | "forms" | "projects" | "notices">("overview");
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<StudentRecord | null>(null);
+  const [noticeTitle, setNoticeTitle] = useState("");
+  const [noticeContent, setNoticeContent] = useState("");
+  const [projectTitle, setProjectTitle] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
+  const [groupName, setGroupName] = useState("");
+  const [groupMembers, setGroupMembers] = useState<string[]>([]);
+  const [message, setMessage] = useState("");
+
+  async function saveNotice() {
+    const response = await fetch("/api/announcements", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: noticeTitle, content: noticeContent, status: "published" }) });
+    const payload = await response.json() as { announcement?: Announcement; error?: string };
+    if (!response.ok || !payload.announcement) return setMessage(payload.error ?? "공지사항을 저장하지 못했습니다.");
+    onAnnouncementSaved(payload.announcement); setNoticeTitle(""); setNoticeContent(""); setMessage("공지사항을 공개했습니다.");
+  }
+  async function saveGroup() {
+    const response = await fetch("/api/groups", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: groupName, memberIds: groupMembers }) });
+    const payload = await response.json() as { group?: StudentGroup; error?: string };
+    if (!response.ok || !payload.group) return setMessage(payload.error ?? "그룹을 저장하지 못했습니다.");
+    onGroupSaved(payload.group); setGroupName(""); setGroupMembers([]); setMessage("학생 그룹을 만들었습니다.");
+  }
+  async function saveProject() {
+    const response = await fetch("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: projectTitle, description: projectDescription }) });
+    const payload = await response.json() as { project?: Project; error?: string };
+    if (!response.ok || !payload.project) return setMessage(payload.error ?? "프로젝트를 만들지 못했습니다.");
+    onProjectSaved(payload.project); setProjectTitle(""); setProjectDescription(""); setMessage("프로젝트 참가 신청을 열었습니다.");
+  }
+  async function toggleSelection(project: Project, studentId: string) {
+    const selectedIds = project.selectedIds.includes(studentId) ? project.selectedIds.filter((id) => id !== studentId) : [...project.selectedIds, studentId];
+    const response = await fetch("/api/projects", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: project.id, selectedIds, status: project.status }) });
+    const payload = await response.json() as { project?: Project; error?: string };
+    if (payload.project) onProjectSaved(payload.project); else setMessage(payload.error ?? "선발 정보를 저장하지 못했습니다.");
+  }
   return (
     <>
       <section className="welcome-row">
@@ -835,8 +933,9 @@ function TeacherDashboard({
           </div>
         </article>
       </section>
-      <FormManager forms={forms} onSaved={onFormSaved} />
-      <section className="teacher-panel">
+      <div className="teacher-mode-tabs"><button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}><Users />학생 활동</button><button className={tab === "forms" ? "active" : ""} onClick={() => setTab("forms")}><ClipboardCheck />활동지·배포</button><button className={tab === "projects" ? "active" : ""} onClick={() => setTab("projects")}><FolderKanban />프로젝트·그룹</button><button className={tab === "notices" ? "active" : ""} onClick={() => setTab("notices")}><Megaphone />공지사항</button></div>
+      {tab === "forms" && <FormManager key={forms.map((form) => form.id).join("|")} forms={forms} students={students} groups={groups} projects={projects} onSaved={onFormSaved} />}
+      {tab === "overview" && <section className="teacher-panel">
         <div className="section-heading">
           <div>
             <h2>최근 학생 활동</h2>
@@ -848,9 +947,9 @@ function TeacherDashboard({
         <div className="teacher-activity-list">
           {activities.length ? (
             activities.map((activity) => (
-              <article key={activity.id}>
+              <article key={activity.id} className="clickable-activity" onClick={() => setSelectedActivity(activity)}>
                 <div>
-                  <b>{activity.studentName}</b>
+                  <button className="student-link" onClick={(event) => { event.stopPropagation(); const student = students.find((item) => item.id === activity.ownerId); if (student) setSelectedStudent(student); }}>{activity.studentName}</button>
                   <span>{activity.career}</span>
                 </div>
                 <div>
@@ -864,9 +963,40 @@ function TeacherDashboard({
             <p className="empty-copy">아직 제출된 학생 활동이 없습니다.</p>
           )}
         </div>
-      </section>
+        <div className="student-progress-list"><div className="section-heading"><div><h2>학생별 진로 설계 흐름</h2><p>활동의 수, 평균 적합도와 과제 유형의 폭을 함께 확인합니다.</p></div></div>{students.map((student) => { const records = student.activities; const average = records.length ? Math.round(records.reduce((sum, item) => sum + item.fitScore, 0) / records.length) : 0; const categories = new Set(records.map((item) => item.category)).size; const level = records.length >= 3 && average >= 65 && categories >= 2 ? "진로 특성에 맞게 심화 중" : records.length >= 1 ? "연결 활동 보완 필요" : "활동 시작 필요"; return <button key={student.id} onClick={() => setSelectedStudent(student)}><span className="student-avatar">{student.displayName.slice(-2)}</span><div><b>{student.displayName}</b><small>{student.career} · {records.length}개 활동</small></div><span className={`trajectory ${average >= 65 ? "good" : "watch"}`}>{level}</span><strong>{average}%</strong><ChevronRight /></button>; })}</div>
+      </section>}
+      {tab === "projects" && <section className="management-grid"><article className="management-card"><span className="section-kicker"><UserCheck />학생 그룹 만들기</span><h2>그룹 배포 대상</h2><Label htmlFor="group-name">그룹 이름</Label><Input id="group-name" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="예: A프로젝트 선발팀" /><div className="selection-list">{students.map((student) => <label key={student.id}><Checkbox checked={groupMembers.includes(student.id)} onCheckedChange={(checked) => setGroupMembers(checked ? [...groupMembers, student.id] : groupMembers.filter((id) => id !== student.id))} /><span>{student.displayName}</span><small>{student.career}</small></label>)}</div><Button onClick={saveGroup}><Save />그룹 저장</Button><div className="saved-chips">{groups.map((group) => <span key={group.id}>{group.name} · {group.memberIds.length}명</span>)}</div></article><article className="management-card"><span className="section-kicker"><FolderKanban />프로젝트 참가 관리</span><h2>프로젝트 개설</h2><Label htmlFor="project-title">프로젝트 이름</Label><Input id="project-title" value={projectTitle} onChange={(e) => setProjectTitle(e.target.value)} placeholder="예: A프로젝트" /><Label htmlFor="project-description">프로젝트 안내</Label><Textarea id="project-description" value={projectDescription} onChange={(e) => setProjectDescription(e.target.value)} rows={3} /><Button onClick={saveProject}><Plus />참가 신청 열기</Button><div className="project-admin-list">{projects.map((project) => <div key={project.id}><b>{project.title}</b><span>신청 {project.applicantIds.length}명 · 선발 {project.selectedIds.length}명</span>{project.applicantIds.map((id) => { const student = students.find((item) => item.id === id); return <label key={id}><Checkbox checked={project.selectedIds.includes(id)} onCheckedChange={() => toggleSelection(project, id)} /><span>{student?.displayName ?? id}</span><small>선발</small></label>; })}</div>)}</div></article></section>}
+      {tab === "notices" && <section className="management-grid"><article className="management-card"><span className="section-kicker"><Megaphone />공지사항 작성</span><h2>학생에게 알릴 내용</h2><Label htmlFor="notice-title">제목</Label><Input id="notice-title" value={noticeTitle} onChange={(e) => setNoticeTitle(e.target.value)} /><Label htmlFor="notice-content">내용</Label><Textarea id="notice-content" rows={6} value={noticeContent} onChange={(e) => setNoticeContent(e.target.value)} /><Button onClick={saveNotice}><Megaphone />공지 공개</Button>{message && <p className="manager-message">{message}</p>}</article><article className="management-card"><h2>공개된 공지</h2><div className="notice-admin-list">{announcements.map((notice) => <div key={notice.id}><b>{notice.title}</b><p>{notice.content}</p><time>{new Intl.DateTimeFormat("ko-KR").format(new Date(notice.createdAt))}</time></div>)}</div></article></section>}
+      <ActivityDetailDialog key={selectedActivity?.id ?? "teacher-activity"} activity={selectedActivity} forms={forms} canEdit={false} onClose={() => setSelectedActivity(null)} onSaved={() => undefined} />
+      <StudentPortfolioDialog student={selectedStudent} forms={forms} onClose={() => setSelectedStudent(null)} />
     </>
   );
+}
+
+function ActivityDetailDialog({ activity, forms, canEdit, onClose, onSaved }: { activity: Activity | null; forms: ActivityForm[]; canEdit: boolean; onClose: () => void; onSaved: (activity: Activity) => void }) {
+  const [title, setTitle] = useState(activity?.title ?? "");
+  const [answers, setAnswers] = useState<Record<string, string>>(activity?.answers ?? {});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const form = forms.find((item) => item.id === activity?.formId);
+  const questions = form?.questions ?? Object.keys(answers).map((id, index) => ({ id, label: `답변 ${index + 1}`, type: "long_text" as const, required: false }));
+  async function save() {
+    if (!activity) return;
+    setSaving(true); setError("");
+    const response = await fetch("/api/activities", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: activity.id, title, answers }) });
+    const payload = await response.json() as { activity?: Activity; error?: string };
+    setSaving(false);
+    if (!response.ok || !payload.activity) return setError(payload.error ?? "수정하지 못했습니다.");
+    onSaved(payload.activity); onClose();
+  }
+  return <Dialog open={Boolean(activity)} onOpenChange={(open) => !open && onClose()}><DialogContent className="activity-detail-dialog max-h-[92vh] overflow-y-auto sm:max-w-[720px]"><DialogHeader><DialogTitle>{canEdit ? "나의 결과물 수정" : "학생 활동 답변"}</DialogTitle><DialogDescription>{activity?.studentName && `${activity.studentName} · `}{activity?.category} · 진로 연결도 {activity?.fitScore ?? 0}%</DialogDescription></DialogHeader>{activity && <div className="activity-detail-body"><div><Label htmlFor="detail-title">활동 제목</Label><Input id="detail-title" value={title} disabled={!canEdit} onChange={(event) => setTitle(event.target.value)} /></div>{questions.map((question) => <div key={question.id}><Label htmlFor={`detail-${question.id}`}>{question.label}</Label><Textarea id={`detail-${question.id}`} rows={4} disabled={!canEdit} value={answers[question.id] ?? ""} onChange={(event) => setAnswers({ ...answers, [question.id]: event.target.value })} /></div>)}{activity.evidence && <div className="analysis-note"><b>진로 연결 근거</b><p>{activity.evidence}</p></div>}<div className="analysis-note"><b>다음 탐구 제안</b><p>{activity.nextStep}</p></div>{activity.teacherClue && <div className="analysis-note teacher"><b>교사 관찰 단서</b><p>{activity.teacherClue}</p></div>}{error && <p className="form-error">{error}</p>}</div>}<DialogFooter><Button variant="outline" onClick={onClose}>닫기</Button>{canEdit && <Button onClick={save} disabled={saving}><Save />{saving ? "저장 중…" : "수정 저장·재분석"}</Button>}</DialogFooter></DialogContent></Dialog>;
+}
+
+function StudentPortfolioDialog({ student, forms, onClose }: { student: StudentRecord | null; forms: ActivityForm[]; onClose: () => void }) {
+  const [detail, setDetail] = useState<Activity | null>(null);
+  const records = student?.activities ?? [];
+  const average = records.length ? Math.round(records.reduce((sum, item) => sum + item.fitScore, 0) / records.length) : 0;
+  return <><Dialog open={Boolean(student)} onOpenChange={(open) => !open && onClose()}><DialogContent className="student-portfolio-dialog max-h-[92vh] overflow-y-auto sm:max-w-[820px]"><DialogHeader><DialogTitle>{student?.displayName} 학생의 전체 기록</DialogTitle><DialogDescription>{student?.career} · 누적 {records.length}개 · 평균 진로 연결도 {average}%</DialogDescription></DialogHeader><div className="portfolio-record-list">{records.map((activity) => <button key={activity.id} onClick={() => setDetail(activity)}><div><span>{activity.category}</span><h3>{activity.title}</h3><p>{activity.summary}</p></div><strong>{activity.fitScore}%</strong><ChevronRight /></button>)}{!records.length && <p className="empty-copy">아직 작성한 활동이 없습니다.</p>}</div></DialogContent></Dialog><ActivityDetailDialog key={detail?.id ?? "student-detail"} activity={detail} forms={forms} canEdit={false} onClose={() => setDetail(null)} onSaved={() => undefined} /></>;
 }
 
 function ReportDialog({
@@ -1127,6 +1257,11 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [forms, setForms] = useState<ActivityForm[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [students, setStudents] = useState<StudentRecord[]>([]);
+  const [groups, setGroups] = useState<StudentGroup[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   const [view, setView] = useState<"student" | "teacher">("student");
   const [section, setSection] = useState<StudentSection>("today");
   const [reportForm, setReportForm] = useState<ActivityForm | null>(null);
@@ -1144,9 +1279,14 @@ export default function DashboardPage() {
         const data = (await session.json()) as { profile: Profile };
         setProfile(data.profile);
         setView(data.profile.role === "teacher" ? "teacher" : "student");
-        const [formResponse, activityResponse] = await Promise.all([
+        const teacher = data.profile.role === "teacher";
+        const [formResponse, activityResponse, projectResponse, announcementResponse, studentResponse, groupResponse] = await Promise.all([
           fetch("/api/forms"),
           fetch("/api/activities"),
+          fetch("/api/projects"),
+          fetch(teacher ? "/api/announcements?all=1" : "/api/announcements"),
+          teacher ? fetch("/api/students") : Promise.resolve(null),
+          teacher ? fetch("/api/groups") : Promise.resolve(null),
         ]);
         if (formResponse.ok)
           setForms(
@@ -1158,6 +1298,10 @@ export default function DashboardPage() {
             ((await activityResponse.json()) as { activities: Activity[] })
               .activities ?? [],
           );
+        if (projectResponse.ok) setProjects(((await projectResponse.json()) as { projects: Project[] }).projects ?? []);
+        if (announcementResponse.ok) setAnnouncements(((await announcementResponse.json()) as { announcements: Announcement[] }).announcements ?? []);
+        if (studentResponse?.ok) setStudents(((await studentResponse.json()) as { students: StudentRecord[] }).students ?? []);
+        if (groupResponse?.ok) setGroups(((await groupResponse.json()) as { groups: StudentGroup[] }).groups ?? []);
       } finally {
         setLoading(false);
       }
@@ -1317,12 +1461,19 @@ export default function DashboardPage() {
             <TeacherDashboard
               forms={forms}
               activities={activities}
+              students={students}
+              groups={groups}
+              projects={projects}
+              announcements={announcements}
               onFormSaved={(form) =>
                 setForms((current) => [
                   form,
                   ...current.filter((item) => item.id !== form.id),
                 ])
               }
+              onGroupSaved={(group) => setGroups((current) => [group, ...current.filter((item) => item.id !== group.id)])}
+              onProjectSaved={(project) => setProjects((current) => [project, ...current.filter((item) => item.id !== project.id)])}
+              onAnnouncementSaved={(announcement) => setAnnouncements((current) => [announcement, ...current.filter((item) => item.id !== announcement.id)])}
             />
           ) : section === "today" ? (
             <StudentDashboard
@@ -1331,15 +1482,18 @@ export default function DashboardPage() {
               forms={published}
               onWrite={setReportForm}
               onEditProfile={() => setProfileOpen(true)}
+              onSelectActivity={setSelectedActivity}
             />
           ) : section === "results" ? (
-            <ResultsView items={activities} onWrite={writeFirstReport} />
+            <ResultsView items={activities} onWrite={writeFirstReport} onSelect={setSelectedActivity} />
           ) : section === "career" ? (
             <CareerView
               profile={profile}
               items={activities}
               onEditProfile={() => setProfileOpen(true)}
               onWrite={writeFirstReport}
+              projects={projects}
+              onProjectApplied={(project) => setProjects((current) => [project, ...current.filter((item) => item.id !== project.id)])}
             />
           ) : (
             <GrowthView items={activities} />
@@ -1360,6 +1514,7 @@ export default function DashboardPage() {
         onOpenChange={setProfileOpen}
         onSaved={setProfile}
       />
+      <ActivityDetailDialog key={selectedActivity?.id ?? "own-activity"} activity={selectedActivity} forms={forms} canEdit onClose={() => setSelectedActivity(null)} onSaved={(updated) => setActivities((current) => current.map((item) => item.id === updated.id ? updated : item))} />
     </main>
   );
 }

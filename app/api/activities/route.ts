@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { getDb } from "@/db";
 import { activities } from "@/db/schema";
@@ -15,12 +15,34 @@ export async function GET(request: Request) {
   try {
     const authenticated = await requireProfile(request);
     if (!authenticated) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    const studentId = new URL(request.url).searchParams.get("studentId");
     const rows = authenticated.profile.role === "teacher"
-      ? await getDb().select().from(activities).orderBy(desc(activities.createdAt)).limit(100)
+      ? studentId ? await getDb().select().from(activities).where(eq(activities.ownerId, studentId)).orderBy(desc(activities.createdAt)).limit(100) : await getDb().select().from(activities).orderBy(desc(activities.createdAt)).limit(100)
       : await getDb().select().from(activities).where(eq(activities.ownerId, authenticated.profile.id)).orderBy(desc(activities.createdAt)).limit(50);
     return Response.json({ activities: rows });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 503 });
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const authenticated = await requireProfile(request);
+    if (!authenticated) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    const input = await request.json() as { id?: string; title?: string; answers?: Record<string, string>; category?: string };
+    if (!input.id) return Response.json({ error: "수정할 결과물을 찾을 수 없습니다." }, { status: 400 });
+    const [existing] = await getDb().select().from(activities).where(eq(activities.id, input.id)).limit(1);
+    if (!existing || authenticated.profile.role !== "teacher" && existing.ownerId !== authenticated.profile.id) return Response.json({ error: "수정 권한이 없습니다." }, { status: 403 });
+    const title = input.title?.trim() ?? existing.title;
+    const answers = input.answers ?? existing.answers;
+    const summary = Object.values(answers).filter(Boolean).join("\n\n") || existing.summary;
+    if (!title || !summary) return Response.json({ error: "제목과 답변을 입력해 주세요." }, { status: 400 });
+    const analysis = analyzeActivity(title, summary, existing.career);
+    await getDb().update(activities).set({ title, answers, summary, category: input.category?.trim() || existing.category, revisedAt: new Date().toISOString(), ...analysis }).where(and(eq(activities.id, existing.id), eq(activities.ownerId, existing.ownerId)));
+    const [activity] = await getDb().select().from(activities).where(eq(activities.id, existing.id)).limit(1);
+    return Response.json({ activity });
+  } catch (error) {
+    return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
 
