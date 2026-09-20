@@ -11,7 +11,7 @@ export async function ensureProfile(request: Request) {
   const values = {
     id: user.id,
     email: user.email,
-    displayName: user.displayName,
+    displayName: existing?.displayName ?? user.displayName,
     role: user.role,
     career: existing?.career ?? "진로 탐색 중",
     interests: existing?.interests ?? [],

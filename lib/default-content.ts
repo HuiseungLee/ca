@@ -15,3 +15,17 @@ export const defaultActivityForm = {
     { id: "q3", label: "새롭게 알게 된 점과 다음에 더 탐구하고 싶은 것은 무엇인가요?", type: "long_text", required: true },
   ] satisfies FormQuestion[],
 };
+
+export const individualActivityForm = {
+  ...defaultActivityForm,
+  id: "individual-inquiry",
+  title: "개별 탐구 과제",
+  category: "개별 탐구 과제",
+  description: "새로운 계획 또는 완료한 탐구를 기록하세요. 이전 활동을 선택하면 탐구의 연결 흐름이 함께 저장됩니다.",
+  distributionMode: "all" as const,
+  questions: [
+    { id: "motivation", label: "탐구 질문과 진로와의 연결", type: "long_text", required: true, placeholder: "무엇이 궁금하며 희망 진로와 어떤 관련이 있나요?" },
+    { id: "process", label: "탐구 과정 또는 실행 계획", type: "long_text", required: true, placeholder: "비교할 대상, 조사·실험 방법, 활용할 자료를 구체적으로 적어주세요." },
+    { id: "reflection", label: "결과·배운 점·다음 질문", type: "long_text", required: false, placeholder: "계획 단계라면 예상 결과와 확인하고 싶은 점을 적어주세요." },
+  ] satisfies FormQuestion[],
+};

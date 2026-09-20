@@ -2,11 +2,17 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { requireProfile } from "@/lib/auth";
+import { env } from "cloudflare:workers";
+
+function visibleProject(project: typeof projects.$inferSelect, profile: { id: string; role: string }) {
+  return profile.role === "teacher" ? project : { ...project, createdBy: "", applicantIds: project.applicantIds.filter((id) => id === profile.id), selectedIds: project.selectedIds.filter((id) => id === profile.id) };
+}
 
 export async function GET(request: Request) {
   const authenticated = await requireProfile(request);
   if (!authenticated) return Response.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  return Response.json({ projects: await getDb().select().from(projects).orderBy(desc(projects.createdAt)).limit(100) });
+  const rows = await getDb().select().from(projects).orderBy(desc(projects.createdAt)).limit(100);
+  return Response.json({ projects: rows.map((project) => visibleProject(project, authenticated.profile)) });
 }
 
 export async function POST(request: Request) {
@@ -16,9 +22,10 @@ export async function POST(request: Request) {
   if (input.action === "apply") {
     const [project] = await getDb().select().from(projects).where(eq(projects.id, input.id ?? "")).limit(1);
     if (!project || project.status !== "open") return Response.json({ error: "신청할 수 없는 프로젝트입니다." }, { status: 400 });
-    const applicantIds = [...new Set([...project.applicantIds, authenticated.profile.id])];
-    await getDb().update(projects).set({ applicantIds, updatedAt: new Date().toISOString() }).where(eq(projects.id, project.id));
-    return Response.json({ project: { ...project, applicantIds } });
+    if (!env.DB) return Response.json({ error: "저장소에 연결하지 못했습니다." }, { status: 503 });
+    await env.DB.prepare("UPDATE projects SET applicant_ids = json_insert(applicant_ids, '$[#]', ?), updated_at = ? WHERE id = ? AND status = 'open' AND NOT EXISTS (SELECT 1 FROM json_each(projects.applicant_ids) WHERE value = ?)").bind(authenticated.profile.id, new Date().toISOString(), project.id, authenticated.profile.id).run();
+    const [updated] = await getDb().select().from(projects).where(eq(projects.id, project.id)).limit(1);
+    return Response.json({ project: visibleProject(updated, authenticated.profile) });
   }
   if (authenticated.profile.role !== "teacher") return Response.json({ error: "교사 계정만 프로젝트를 만들 수 있습니다." }, { status: 403 });
   if (!input.title?.trim()) return Response.json({ error: "프로젝트 이름을 입력해 주세요." }, { status: 400 });

@@ -4,7 +4,7 @@ const SHARED_AUTH_DOMAIN = "lhsstart.synology.me";
 const SHARED_AUTH_MAX_AGE = 60 * 60 * 24 * 30;
 
 export type SharedAuthSession = { access_token: string; refresh_token?: string; expires_at?: number };
-type AuthPayload = { access_token?: unknown; refresh_token?: unknown; expires_at?: unknown; expires_in?: unknown };
+export type AuthPayload = { access_token?: unknown; refresh_token?: unknown; expires_at?: unknown; expires_in?: unknown; error?: string; msg?: string; error_description?: string };
 
 export function parseSharedAuthSession(value?: string | null): SharedAuthSession | null {
   if (!value) return null;

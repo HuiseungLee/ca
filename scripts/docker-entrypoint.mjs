@@ -9,6 +9,7 @@ const migrationMarker = `${stateDirectory}/.careerfolio-schema-v1`;
 const sharedAccountMigrationMarker = `${stateDirectory}/.careerfolio-schema-v2`;
 const activityWorkflowMigrationMarker = `${stateDirectory}/.careerfolio-schema-v3`;
 const teacherWorkflowMigrationMarker = `${stateDirectory}/.careerfolio-schema-v4`;
+const supportMigrationMarker = `${stateDirectory}/.careerfolio-schema-v5`;
 
 if (!existsSync(migrationMarker)) {
   const migration = spawnSync(node, [
@@ -60,6 +61,16 @@ if (!existsSync(teacherWorkflowMigrationMarker)) {
 
   if (migration.status !== 0) process.exit(migration.status ?? 1);
   writeFileSync(teacherWorkflowMigrationMarker, new Date().toISOString(), "utf8");
+}
+
+if (!existsSync(supportMigrationMarker)) {
+  const migration = spawnSync(node, [
+    "--import", "./scripts/sites-env.mjs", wrangler,
+    "d1", "execute", "DB", "--local", "--config", config,
+    "--persist-to", stateDirectory, "--file", "drizzle/0004_huge_lady_mastermind.sql",
+  ], { stdio: "inherit", env: process.env });
+  if (migration.status !== 0) process.exit(migration.status ?? 1);
+  writeFileSync(supportMigrationMarker, new Date().toISOString(), "utf8");
 }
 
 const variableArguments = [];

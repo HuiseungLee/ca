@@ -2,7 +2,7 @@
 
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { Compass } from "lucide-react";
-import { clearSharedAuthSession, restoreSharedAuthSession, saveSharedAuthSession, type SharedAuthSession } from "@/lib/shared-auth";
+import { clearSharedAuthSession, restoreSharedAuthSession, saveSharedAuthSession, type SharedAuthSession, type AuthPayload } from "@/lib/shared-auth";
 
 export type SharedAccount = { id: string; email: string; role: "teacher" | "student"; displayName: string; realName: string | null; nickname: string | null };
 type AuthConfig = { configured: boolean; url: string; key: string };
@@ -49,7 +49,7 @@ export function SharedAuthGate({ children }: { children: (account: SharedAccount
         : mode === "verify"
           ? await fetch(`${config.url}/auth/v1/verify`, { method: "POST", headers: { apikey: config.key, "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim(), token: verificationCode, type: "email" }) })
           : await fetch(`${config.url}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: config.key, "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
-      const payload = await response.json().catch(() => ({}));
+      const payload = await response.json().catch(() => ({})) as AuthPayload;
       if (!response.ok) throw new Error(String(payload.error || payload.msg || payload.error_description || "인증하지 못했습니다."));
       if (mode === "signup" && !payload.access_token) { setMode("verify"); setPassword(""); setVerificationCode(""); setMessage("가입 확인 메일의 6자리 코드를 입력해 주세요."); return; }
       const session = saveSharedAuthSession(payload); await loadAccount(session);
@@ -62,7 +62,7 @@ export function SharedAuthGate({ children }: { children: (account: SharedAccount
     setLoading(true); setMessage("");
     try {
       const response = await fetch(`${config.url}/auth/v1/resend`, { method: "POST", headers: { apikey: config.key, "Content-Type": "application/json" }, body: JSON.stringify({ type: "signup", email: email.trim() }) });
-      const payload = await response.json().catch(() => ({}));
+      const payload = await response.json().catch(() => ({})) as AuthPayload;
       if (!response.ok) throw new Error(String(payload.error || payload.msg || "확인 코드를 다시 보내지 못했습니다."));
       setVerificationCode(""); setMessage("새 확인 코드를 보냈습니다.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "확인 코드를 다시 보내지 못했습니다."); }

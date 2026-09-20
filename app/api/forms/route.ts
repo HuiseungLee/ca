@@ -20,15 +20,15 @@ export async function GET(request: Request) {
     const rows = await getDb().select().from(activityForms).where(isPublic ? eq(activityForms.status, "published") : undefined).orderBy(desc(activityForms.updatedAt)).limit(50);
     if (isPublic) {
       const publicRows = rows.filter((form) => form.distributionMode === "all");
-      return Response.json({ forms: publicRows.length ? publicRows : [defaultActivityForm] });
+      return Response.json({ forms: publicRows.map((form) => ({ ...form, targetIds: [], updatedBy: null })) });
     }
     if (authenticated?.profile.role === "teacher") return Response.json({ forms: rows.length ? rows : [defaultActivityForm] });
     const groups = await getDb().select().from(studentGroups).limit(100);
     const memberGroupIds = new Set(groups.filter((group) => group.memberIds.includes(authenticated!.profile.id)).map((group) => group.id));
     const visible = rows.filter((form) => form.status === "published" && (form.distributionMode === "all" || form.distributionMode === "individual" && form.targetIds.includes(authenticated!.profile.id) || form.distributionMode === "group" && form.targetIds.some((id) => memberGroupIds.has(id))));
-    return Response.json({ forms: visible });
-  } catch (error) {
-    return Response.json({ forms: [defaultActivityForm], warning: error instanceof Error ? error.message : "기본 양식을 표시합니다." });
+    return Response.json({ forms: visible.map((form) => ({ ...form, targetIds: [], updatedBy: null })) });
+  } catch {
+    return Response.json({ error: "활동지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." }, { status: 503 });
   }
 }
 

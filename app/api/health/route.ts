@@ -3,6 +3,7 @@ import { accountServiceAvailable } from "@/lib/supabase-auth";
 
 export async function GET() {
   try {
+    if (!env.DB || !env.BUCKET) throw new Error("Storage unavailable");
     const [database, accountService] = await Promise.all([
       env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>(),
       accountServiceAvailable(),
