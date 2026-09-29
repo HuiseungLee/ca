@@ -10,6 +10,7 @@ const sharedAccountMigrationMarker = `${stateDirectory}/.careerfolio-schema-v2`;
 const activityWorkflowMigrationMarker = `${stateDirectory}/.careerfolio-schema-v3`;
 const teacherWorkflowMigrationMarker = `${stateDirectory}/.careerfolio-schema-v4`;
 const supportMigrationMarker = `${stateDirectory}/.careerfolio-schema-v5`;
+const inquiryMigrationMarker = `${stateDirectory}/.careerfolio-schema-v6`;
 
 if (!existsSync(migrationMarker)) {
   const migration = spawnSync(node, [
@@ -71,6 +72,16 @@ if (!existsSync(supportMigrationMarker)) {
   ], { stdio: "inherit", env: process.env });
   if (migration.status !== 0) process.exit(migration.status ?? 1);
   writeFileSync(supportMigrationMarker, new Date().toISOString(), "utf8");
+}
+
+if (!existsSync(inquiryMigrationMarker)) {
+  const migration = spawnSync(node, [
+    "--import", "./scripts/sites-env.mjs", wrangler,
+    "d1", "execute", "DB", "--local", "--config", config,
+    "--persist-to", stateDirectory, "--file", "drizzle/0005_puzzling_wendigo.sql",
+  ], { stdio: "inherit", env: process.env });
+  if (migration.status !== 0) process.exit(migration.status ?? 1);
+  writeFileSync(inquiryMigrationMarker, new Date().toISOString(), "utf8");
 }
 
 const variableArguments = [];

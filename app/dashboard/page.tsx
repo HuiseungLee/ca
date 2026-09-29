@@ -54,6 +54,7 @@ import {
 import { individualActivityForm } from "@/lib/default-content";
 import { PortfolioSupport } from "@/components/portfolio-support";
 import { AccountDialog } from "@/components/account-dialog";
+import { InquiryWorkspace } from "@/components/inquiry-workspace";
 import { buildPortfolio, type InquirySuggestion } from "@/lib/portfolio";
 
 type Profile = {
@@ -123,8 +124,9 @@ type Announcement = {
   status: string;
   createdAt: string;
 };
-type StudentSection = "today" | "results" | "career" | "growth";
+type StudentSection = "today" | "inquiry" | "results" | "career" | "growth";
 type TeacherSection =
+  | "inquiry"
   | "overview"
   | "forms"
   | "projects"
@@ -2163,9 +2165,10 @@ export default function DashboardPage() {
     null,
   );
   const [view, setView] = useState<"student" | "teacher">("student");
-  const [section, setSection] = useState<StudentSection>("today");
+  const [section, setSection] = useState<StudentSection>("inquiry");
   const [teacherSection, setTeacherSection] =
-    useState<TeacherSection>("overview");
+    useState<TeacherSection>("inquiry");
+  const [inquiryDirty, setInquiryDirty] = useState(false);
   const [suggestion, setSuggestion] = useState<InquirySuggestion | null>(null);
   const [reportForm, setReportForm] = useState<ActivityForm | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -2267,13 +2270,42 @@ export default function DashboardPage() {
     [forms],
   );
   async function logout() {
+    if (!canLeaveInquiry()) return;
     clearSharedAuthSession();
     window.location.replace("/");
   }
   function openSection(next: StudentSection) {
+    if (next !== section && !canLeaveInquiry()) return;
     setSection(next);
     setView("student");
     setMobileOpen(false);
+  }
+  function canLeaveInquiry() {
+    if (
+      inquiryDirty &&
+      !window.confirm(
+        "아직 저장하지 않은 프로젝트 내용이 있습니다. 저장하지 않고 이동할까요?",
+      )
+    )
+      return false;
+    setInquiryDirty(false);
+    return true;
+  }
+  function openTeacherSection(next: TeacherSection) {
+    if (next !== teacherSection && !canLeaveInquiry()) return;
+    setTeacherSection(next);
+    setMobileOpen(false);
+  }
+  async function refreshProjects() {
+    try {
+      const response = await fetch("/api/projects");
+      if (response.ok)
+        setProjects(
+          ((await response.json()) as { projects?: Project[] }).projects ?? [],
+        );
+    } catch {
+      /* The project workspace shows its own request errors. */
+    }
   }
   const ownActivities = activities.filter(
     (activity) => activity.ownerId === profile?.id,
@@ -2331,6 +2363,11 @@ export default function DashboardPage() {
           <nav aria-label="교사 관리 메뉴">
             {(
               [
+                {
+                  id: "inquiry",
+                  label: "탐구 프로젝트 운영",
+                  icon: FolderKanban,
+                },
                 { id: "overview", label: "학생 활동·피드백", icon: Users },
                 {
                   id: "connections",
@@ -2347,10 +2384,7 @@ export default function DashboardPage() {
                 key={item.id}
                 className={teacherSection === item.id ? "active" : ""}
                 aria-current={teacherSection === item.id ? "page" : undefined}
-                onClick={() => {
-                  setTeacherSection(item.id);
-                  setMobileOpen(false);
-                }}
+                onClick={() => openTeacherSection(item.id)}
               >
                 <item.icon />
                 {item.label}
@@ -2359,6 +2393,13 @@ export default function DashboardPage() {
           </nav>
         ) : (
           <nav aria-label="학생 활동 메뉴">
+            <button
+              className={section === "inquiry" ? "active" : ""}
+              onClick={() => openSection("inquiry")}
+              aria-current={section === "inquiry" ? "page" : undefined}
+            >
+              <FolderKanban /> 탐구 프로젝트
+            </button>
             <button
               className={
                 section === "today" && view === "student" ? "active" : ""
@@ -2438,7 +2479,12 @@ export default function DashboardPage() {
       </aside>
       <div className="workspace">
         <header className="topbar">
-          <button className="mobile-menu" aria-label="메뉴 열기" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}>
+          <button
+            className="mobile-menu"
+            aria-label="메뉴 열기"
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen(true)}
+          >
             <Menu />
           </button>
           <div className="mobile-brand">
@@ -2448,7 +2494,10 @@ export default function DashboardPage() {
           {profile.role === "teacher" ? (
             <Tabs
               value={view}
-              onValueChange={(value) => setView(value as typeof view)}
+              onValueChange={(value) => {
+                if (value !== view && canLeaveInquiry())
+                  setView(value as typeof view);
+              }}
             >
               <TabsList className="role-tabs">
                 <TabsTrigger value="student">
@@ -2469,7 +2518,7 @@ export default function DashboardPage() {
               aria-label="공지사항 보기"
               onClick={() =>
                 view === "teacher"
-                  ? setTeacherSection("notices")
+                  ? openTeacherSection("notices")
                   : window.location.assign("/#notices")
               }
             >
@@ -2502,7 +2551,17 @@ export default function DashboardPage() {
               학생의 기록은 ‘교사 관리 → 학생별 탐구 연결’에서 확인하세요.
             </p>
           )}
-          {view === "teacher" ? (
+          {(view === "teacher" && teacherSection === "inquiry") ||
+          (view === "student" && section === "inquiry") ? (
+            <InquiryWorkspace
+              key={`${view}:${profile.id}`}
+              profile={profile}
+              teacherMode={view === "teacher"}
+              onStartFollowup={startSuggestion}
+              onProjectsChanged={refreshProjects}
+              onDirtyChange={setInquiryDirty}
+            />
+          ) : view === "teacher" ? (
             <TeacherDashboard
               forms={forms}
               activities={activities}
@@ -2511,7 +2570,7 @@ export default function DashboardPage() {
               projects={projects}
               announcements={announcements}
               tab={teacherSection}
-              setTab={setTeacherSection}
+              setTab={openTeacherSection}
               onActivitySaved={updateActivity}
               onFormSaved={(form) =>
                 setForms((current) => [

@@ -95,3 +95,55 @@ export const projects = sqliteTable("projects", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [index("idx_projects_status_created").on(table.status, table.createdAt)]);
+
+export const inquiryWorkflows = sqliteTable("inquiry_workflows", {
+  projectId: text("project_id").primaryKey().references(() => projects.id),
+  drivingQuestion: text("driving_question").notNull().default(""),
+  archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+  stages: text("stages", { mode: "json" }).$type<Array<{ id: string; instruction: string; dueDate: string }>>().notNull().default([]),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const inquiryTeams = sqliteTable("inquiry_teams", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id),
+  name: text("name").notNull(),
+  representativeId: text("representative_id").notNull(),
+  memberIds: text("member_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("idx_inquiry_teams_project").on(table.projectId)]);
+
+export const inquiryEntries = sqliteTable("inquiry_entries", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id),
+  teamId: text("team_id").references(() => inquiryTeams.id),
+  ownerId: text("owner_id").notNull(),
+  scopeKey: text("scope_key").notNull(),
+  stageId: text("stage_id").notNull(),
+  answers: text("answers", { mode: "json" }).$type<Record<string, string>>().notNull().default({}),
+  status: text("status").notNull().default("draft"),
+  version: integer("version").notNull().default(1),
+  reviewHistory: text("review_history", { mode: "json" }).$type<Array<{ status: string; feedback: string; authorId: string; authorName: string; createdAt: string }>>().notNull().default([]),
+  instructionSnapshot: text("instruction_snapshot").notNull().default(""),
+  fileKey: text("file_key"),
+  fileName: text("file_name"),
+  submittedAt: text("submitted_at").notNull().default(""),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  uniqueIndex("idx_inquiry_entries_scope_stage").on(table.projectId, table.scopeKey, table.stageId),
+  index("idx_inquiry_entries_project").on(table.projectId),
+]);
+
+export const inquiryComments = sqliteTable("inquiry_comments", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id),
+  teamId: text("team_id").notNull().references(() => inquiryTeams.id),
+  authorId: text("author_id").notNull(),
+  authorName: text("author_name").notNull(),
+  kind: text("kind").notNull().default("question"),
+  body: text("body").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("idx_inquiry_comments_project").on(table.projectId)]);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   ArrowRight,
   BookOpenCheck,
@@ -364,14 +365,13 @@ export default function PublicHome() {
 
   return (
     <main className="public-shell">
-      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
       <header className="public-header">
-        <a className="public-brand" href="/">
+        <Link className="public-brand" href="/">
           <span>
             <Compass />
           </span>
           <b>커리어폴리오</b>
-        </a>
+        </Link>
         <nav>
           <a href="#notices">공지사항</a>
           <a href="#forms">활동지</a>
@@ -380,7 +380,7 @@ export default function PublicHome() {
           {signedIn ? (
             <Button asChild className="rounded-xl bg-[#314cc7]">
               <a href="/dashboard">
-                내 활동 보기 <ArrowRight />
+                탐구 프로젝트 <ArrowRight />
               </a>
             </Button>
           ) : (
@@ -410,8 +410,8 @@ export default function PublicHome() {
             다음 탐구로 이어가세요.
           </h1>
           <p>
-            활동 보고서를 기록하면 관심 분야와의 연결점을 찾고, 앞으로 이어갈 수
-            있는 질문과 활동을 제안합니다.
+            주장 수집부터 검증, 토론, 결과물과 개인 성찰까지. 모둠과 함께 한
+            단계씩 진행하고, 교사의 피드백을 받아 나의 진로 탐구로 이어갑니다.
           </p>
           <div className="hero-actions">
             <Button
@@ -422,7 +422,7 @@ export default function PublicHome() {
               }
               className="h-12 rounded-xl bg-[#314cc7] px-6"
             >
-              {signedIn ? "내 활동 보기" : "무료로 시작하기"}
+              {signedIn ? "탐구 프로젝트 열기" : "로그인하고 참여하기"}
               <ArrowRight />
             </Button>
             <a href="#forms">활동지 먼저 보기</a>
@@ -430,31 +430,31 @@ export default function PublicHome() {
         </div>
         <div className="hero-board">
           <div className="board-head">
-            <span>나의 탐구 흐름</span>
-            <b>환경공학</b>
+            <span>주제가 바뀌어도 이어지는 탐구</span>
+            <b>6단계 프로젝트</b>
           </div>
           <div className="journey-line">
             <i />
             <div>
-              <small>첫 탐구</small>
-              <b>미세플라스틱의 생태 영향</b>
+              <small>01–02 · 질문에서 근거로</small>
+              <b>미디어 주장 수집 · 과학적 검증</b>
             </div>
             <i />
             <div>
-              <small>확장 활동</small>
-              <b>지역 하천 시료 비교</b>
+              <small>03–04 · 근거에서 대화로</small>
+              <b>사실 판단 · 모둠 토론</b>
             </div>
             <i className="future" />
             <div>
-              <small>다음 제안</small>
-              <b>정화 소재 효율 실험</b>
+              <small>05–06 · 결과에서 다음 탐구로</small>
+              <b>결과물 제출 · 개인 성찰</b>
             </div>
           </div>
           <div className="board-insight">
             <Compass />
             <p>
-              <b>활동 기록 예시 · 진로 연결도 87%</b>환경 문제를 데이터로
-              해석하는 역량이 꾸준히 성장하고 있어요.
+              <b>지금 할 일과 교사의 피드백을 한곳에서</b>
+              짧게 시작하고, 임시저장하고, 피드백을 받아 보완하세요.
             </p>
           </div>
         </div>
