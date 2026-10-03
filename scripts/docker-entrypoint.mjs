@@ -11,77 +11,186 @@ const activityWorkflowMigrationMarker = `${stateDirectory}/.careerfolio-schema-v
 const teacherWorkflowMigrationMarker = `${stateDirectory}/.careerfolio-schema-v4`;
 const supportMigrationMarker = `${stateDirectory}/.careerfolio-schema-v5`;
 const inquiryMigrationMarker = `${stateDirectory}/.careerfolio-schema-v6`;
+const inquiryFormsMigrationMarker = `${stateDirectory}/.careerfolio-schema-v7`;
 
 if (!existsSync(migrationMarker)) {
-  const migration = spawnSync(node, [
-    "--import", "./scripts/sites-env.mjs", wrangler,
-    "d1", "execute", "DB", "--local",
-    "--config", config,
-    "--persist-to", stateDirectory,
-    "--file", "drizzle/0000_cool_cobalt_man.sql",
-  ], { stdio: "inherit", env: process.env });
+  const migration = spawnSync(
+    node,
+    [
+      "--import",
+      "./scripts/sites-env.mjs",
+      wrangler,
+      "d1",
+      "execute",
+      "DB",
+      "--local",
+      "--config",
+      config,
+      "--persist-to",
+      stateDirectory,
+      "--file",
+      "drizzle/0000_cool_cobalt_man.sql",
+    ],
+    { stdio: "inherit", env: process.env },
+  );
 
   if (migration.status !== 0) process.exit(migration.status ?? 1);
   writeFileSync(migrationMarker, new Date().toISOString(), "utf8");
 }
 
 if (!existsSync(sharedAccountMigrationMarker)) {
-  const migration = spawnSync(node, [
-    "--import", "./scripts/sites-env.mjs", wrangler,
-    "d1", "execute", "DB", "--local",
-    "--config", config,
-    "--persist-to", stateDirectory,
-    "--file", "drizzle/0001_oval_power_man.sql",
-  ], { stdio: "inherit", env: process.env });
+  const migration = spawnSync(
+    node,
+    [
+      "--import",
+      "./scripts/sites-env.mjs",
+      wrangler,
+      "d1",
+      "execute",
+      "DB",
+      "--local",
+      "--config",
+      config,
+      "--persist-to",
+      stateDirectory,
+      "--file",
+      "drizzle/0001_oval_power_man.sql",
+    ],
+    { stdio: "inherit", env: process.env },
+  );
 
   if (migration.status !== 0) process.exit(migration.status ?? 1);
   writeFileSync(sharedAccountMigrationMarker, new Date().toISOString(), "utf8");
 }
 
 if (!existsSync(activityWorkflowMigrationMarker)) {
-  const migration = spawnSync(node, [
-    "--import", "./scripts/sites-env.mjs", wrangler,
-    "d1", "execute", "DB", "--local",
-    "--config", config,
-    "--persist-to", stateDirectory,
-    "--file", "drizzle/0002_sad_inertia.sql",
-  ], { stdio: "inherit", env: process.env });
+  const migration = spawnSync(
+    node,
+    [
+      "--import",
+      "./scripts/sites-env.mjs",
+      wrangler,
+      "d1",
+      "execute",
+      "DB",
+      "--local",
+      "--config",
+      config,
+      "--persist-to",
+      stateDirectory,
+      "--file",
+      "drizzle/0002_sad_inertia.sql",
+    ],
+    { stdio: "inherit", env: process.env },
+  );
 
   if (migration.status !== 0) process.exit(migration.status ?? 1);
-  writeFileSync(activityWorkflowMigrationMarker, new Date().toISOString(), "utf8");
+  writeFileSync(
+    activityWorkflowMigrationMarker,
+    new Date().toISOString(),
+    "utf8",
+  );
 }
 
 if (!existsSync(teacherWorkflowMigrationMarker)) {
-  const migration = spawnSync(node, [
-    "--import", "./scripts/sites-env.mjs", wrangler,
-    "d1", "execute", "DB", "--local",
-    "--config", config,
-    "--persist-to", stateDirectory,
-    "--file", "drizzle/0003_old_brother_voodoo.sql",
-  ], { stdio: "inherit", env: process.env });
+  const migration = spawnSync(
+    node,
+    [
+      "--import",
+      "./scripts/sites-env.mjs",
+      wrangler,
+      "d1",
+      "execute",
+      "DB",
+      "--local",
+      "--config",
+      config,
+      "--persist-to",
+      stateDirectory,
+      "--file",
+      "drizzle/0003_old_brother_voodoo.sql",
+    ],
+    { stdio: "inherit", env: process.env },
+  );
 
   if (migration.status !== 0) process.exit(migration.status ?? 1);
-  writeFileSync(teacherWorkflowMigrationMarker, new Date().toISOString(), "utf8");
+  writeFileSync(
+    teacherWorkflowMigrationMarker,
+    new Date().toISOString(),
+    "utf8",
+  );
 }
 
 if (!existsSync(supportMigrationMarker)) {
-  const migration = spawnSync(node, [
-    "--import", "./scripts/sites-env.mjs", wrangler,
-    "d1", "execute", "DB", "--local", "--config", config,
-    "--persist-to", stateDirectory, "--file", "drizzle/0004_huge_lady_mastermind.sql",
-  ], { stdio: "inherit", env: process.env });
+  const migration = spawnSync(
+    node,
+    [
+      "--import",
+      "./scripts/sites-env.mjs",
+      wrangler,
+      "d1",
+      "execute",
+      "DB",
+      "--local",
+      "--config",
+      config,
+      "--persist-to",
+      stateDirectory,
+      "--file",
+      "drizzle/0004_huge_lady_mastermind.sql",
+    ],
+    { stdio: "inherit", env: process.env },
+  );
   if (migration.status !== 0) process.exit(migration.status ?? 1);
   writeFileSync(supportMigrationMarker, new Date().toISOString(), "utf8");
 }
 
 if (!existsSync(inquiryMigrationMarker)) {
-  const migration = spawnSync(node, [
-    "--import", "./scripts/sites-env.mjs", wrangler,
-    "d1", "execute", "DB", "--local", "--config", config,
-    "--persist-to", stateDirectory, "--file", "drizzle/0005_puzzling_wendigo.sql",
-  ], { stdio: "inherit", env: process.env });
+  const migration = spawnSync(
+    node,
+    [
+      "--import",
+      "./scripts/sites-env.mjs",
+      wrangler,
+      "d1",
+      "execute",
+      "DB",
+      "--local",
+      "--config",
+      config,
+      "--persist-to",
+      stateDirectory,
+      "--file",
+      "drizzle/0005_puzzling_wendigo.sql",
+    ],
+    { stdio: "inherit", env: process.env },
+  );
   if (migration.status !== 0) process.exit(migration.status ?? 1);
   writeFileSync(inquiryMigrationMarker, new Date().toISOString(), "utf8");
+}
+
+if (!existsSync(inquiryFormsMigrationMarker)) {
+  const migration = spawnSync(
+    node,
+    [
+      "--import",
+      "./scripts/sites-env.mjs",
+      wrangler,
+      "d1",
+      "execute",
+      "DB",
+      "--local",
+      "--config",
+      config,
+      "--persist-to",
+      stateDirectory,
+      "--file",
+      "drizzle/0006_illegal_tinkerer.sql",
+    ],
+    { stdio: "inherit", env: process.env },
+  );
+  if (migration.status !== 0) process.exit(migration.status ?? 1);
+  writeFileSync(inquiryFormsMigrationMarker, new Date().toISOString(), "utf8");
 }
 
 const variableArguments = [];
@@ -92,19 +201,32 @@ for (const key of [
   "TEACHER_EMAILS",
   "STUDENT_EMAILS",
 ]) {
-  if (process.env[key]) variableArguments.push("--var", `${key}:${process.env[key]}`);
+  if (process.env[key])
+    variableArguments.push("--var", `${key}:${process.env[key]}`);
 }
 
-const server = spawn(node, [
-  "--import", "./scripts/sites-env.mjs", wrangler,
-  "dev", "--local",
-  "--config", config,
-  "--persist-to", stateDirectory,
-  "--ip", "0.0.0.0",
-  "--port", "3000",
-  "--inspector-port", "0",
-  ...variableArguments,
-], { stdio: "inherit", env: process.env });
+const server = spawn(
+  node,
+  [
+    "--import",
+    "./scripts/sites-env.mjs",
+    wrangler,
+    "dev",
+    "--local",
+    "--config",
+    config,
+    "--persist-to",
+    stateDirectory,
+    "--ip",
+    "0.0.0.0",
+    "--port",
+    "3000",
+    "--inspector-port",
+    "0",
+    ...variableArguments,
+  ],
+  { stdio: "inherit", env: process.env },
+);
 
 for (const signal of ["SIGTERM", "SIGINT"]) {
   process.on(signal, () => server.kill(signal));

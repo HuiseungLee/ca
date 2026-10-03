@@ -19,6 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { InquiryFormEditor } from "@/components/inquiry-form-editor";
 import {
   inquiryStages,
   stageIds,
@@ -26,6 +27,8 @@ import {
   nextStage,
   stageCoaching,
   entryStatusLabels,
+  entryStageFields,
+  inquiryFieldType,
   type InquiryAction,
   type InquiryBoard,
   type InquiryComment,
@@ -121,12 +124,13 @@ export function InquiryWorkspace({
   const [notice, setNotice] = useState("");
   const [creating, setCreating] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [panel, setPanel] = useState<"overview" | "work" | "settings">(
-    "overview",
-  );
+  const [panel, setPanel] = useState<
+    "overview" | "work" | "forms" | "settings"
+  >("overview");
   const [teamId, setTeamId] = useState("");
   const [studentId, setStudentId] = useState("");
   const [stageId, setStageId] = useState<StageId>("sources");
+  const [formStageId, setFormStageId] = useState<StageId>("sources");
   const [dirty, setDirty] = useState(false);
   const requestNumber = useRef(0);
 
@@ -249,7 +253,8 @@ export function InquiryWorkspace({
           activeRef.current = updated.project.id;
           setActiveId(updated.project.id);
           setCreating(false);
-          setPanel("settings");
+          setPanel("forms");
+          setFormStageId("sources");
           setTeamId("");
           setStudentId("");
           setStageId("sources");
@@ -261,6 +266,7 @@ export function InquiryWorkspace({
           action.action === "update" ||
           action.action === "team" ||
           action.action === "select" ||
+          action.action === "publish_form" ||
           action.action === "create"
         )
           setDirty(false);
@@ -598,6 +604,19 @@ export function InquiryWorkspace({
                     기록과 피드백
                   </button>
                   <button
+                    aria-current={panel === "forms" ? "page" : undefined}
+                    disabled={busy}
+                    onClick={() => {
+                      if (canLeave()) {
+                        setDirty(false);
+                        setPanel("forms");
+                      }
+                    }}
+                  >
+                    <FileText size={16} />
+                    활동지 편집·배포
+                  </button>
+                  <button
                     aria-current={panel === "settings" ? "page" : undefined}
                     onClick={() => {
                       if (canLeave()) {
@@ -625,6 +644,21 @@ export function InquiryWorkspace({
                   busy={busy}
                   act={act}
                   onDirty={setDirty}
+                />
+              )}
+              {teacher && panel === "forms" && (
+                <InquiryFormEditor
+                  key={`${board.project.id}:${formStageId}`}
+                  board={board}
+                  busy={busy}
+                  initialStageId={formStageId}
+                  onDirty={setDirty}
+                  onPublish={(action) =>
+                    act(
+                      action,
+                      "문항을 저장·배포했습니다. 이 단계를 새로 시작하는 참가자에게 적용됩니다.",
+                    )
+                  }
                 />
               )}
               {panel === "work" && (
@@ -843,6 +877,13 @@ export function InquiryWorkspace({
                           }
                           onError={setError}
                           onStartFollowup={onStartFollowup}
+                          onEditForm={() => {
+                            if (canLeave()) {
+                              setDirty(false);
+                              setFormStageId(stageId);
+                              setPanel("forms");
+                            }
+                          }}
                         />
                       )}
                     </>
@@ -1610,6 +1651,7 @@ function StageWorkspace({
   onUpload,
   onError,
   onStartFollowup,
+  onEditForm,
 }: {
   board: InquiryBoard;
   team: InquiryTeam;
@@ -1623,6 +1665,7 @@ function StageWorkspace({
   onUpload: (entry: InquiryEntry) => void;
   onError: (value: string) => void;
   onStartFollowup: (suggestion: InquirySuggestion) => void;
+  onEditForm?: () => void;
 }) {
   const entry = stageEntry(board.entries, stageId, team.id, ownerId);
   const [draftAnswers, setAnswers] = useState<Record<string, string>>(
@@ -1640,6 +1683,12 @@ function StageWorkspace({
   const fileRef = useRef<HTMLInputElement>(null);
   const stage = inquiryStages.find((item) => item.id === stageId)!;
   const setting = board.project.stages.find((item) => item.id === stageId);
+  const [startedForm] = useState(() => ({
+    fields: entryStageFields(stageId, setting, entry),
+    revision: entry?.formRevision ?? (entry ? 1 : (setting?.revision ?? 1)),
+    instruction:
+      entry?.instructionSnapshot ?? setting?.instruction ?? stage.description,
+  }));
   const ownTeam = team.memberIds.includes(profile.id);
   const editing =
     !teacher &&
@@ -1653,6 +1702,9 @@ function StageWorkspace({
     : undefined;
   const priorReady = !priorId || Boolean(prior && prior.status !== "draft");
   const feedback = entry?.feedback.at(-1);
+  const fields = editing
+    ? startedForm.fields
+    : entryStageFields(stageId, setting, entry);
   const tips = stageCoaching(
     stageId,
     answers,
@@ -1660,6 +1712,7 @@ function StageWorkspace({
     teacher
       ? board.people.find((person) => person.id === ownerId)?.career
       : profile.career,
+    fields,
   );
   const dirty = modified || reviewDirty || commentDirty;
 
@@ -1670,7 +1723,7 @@ function StageWorkspace({
   async function save(status: "draft" | "submitted") {
     setLocalError("");
     if (status === "submitted") {
-      const missing = stage.fields.filter(
+      const missing = fields.filter(
         (field) => field.required && !answers[field.id]?.trim(),
       );
       if (missing.length) {
@@ -1695,6 +1748,7 @@ function StageWorkspace({
         answers,
         status,
         version,
+        formRevision: startedForm.revision,
       },
       status === "draft"
         ? "임시저장했습니다. 나중에 이어 쓸 수 있어요."
@@ -1745,13 +1799,21 @@ function StageWorkspace({
       )
     )
       return;
+    // Custom questions may reuse an original id with a different meaning.
+    const originalAnswer = (id: string) => {
+      const original = stage.fields.find((field) => field.id === id);
+      const recorded = fields.find((field) => field.id === id);
+      return original?.label === recorded?.label
+        ? entry?.answers[id]
+        : undefined;
+    };
     onStartFollowup({
       id: `project-${board.project.id}-${profile.id}`,
       title: `${board.project.title}에서 이어가는 나의 탐구`,
       question:
-        entry?.answers.next ||
+        originalAnswer("next") ||
         "이번 프로젝트에서 더 확인하고 싶은 질문은 무엇인가요?",
-      reason: `${board.project.title} 프로젝트의 개인 성찰에서 이어지는 탐구입니다. 진로 연결: ${entry?.answers.career || profile.career || "관심 분야 탐색"}`,
+      reason: `${board.project.title} 프로젝트의 개인 성찰에서 이어지는 탐구입니다. 진로 연결: ${originalAnswer("career") || profile.career || "관심 분야 탐색"}`,
       method:
         "개인 성찰에서 적은 다음 행동을 실행하고, 새로운 근거와 관점의 변화를 기록하세요.",
       output: "후속 탐구 보고서와 근거 자료",
@@ -1775,8 +1837,29 @@ function StageWorkspace({
             <Status entry={entry} />
           </div>
           <p className="iw-stage-instruction">
-            {setting?.instruction || stage.description}
+            {editing
+              ? startedForm.instruction
+              : entry?.instructionSnapshot ||
+                setting?.instruction ||
+                stage.description}
           </p>
+          <div className="iw-form-version">
+            <span>
+              활동지 {entry?.formRevision ?? startedForm.revision}판 ·{" "}
+              {fields.length}문항
+            </span>
+            {teacher && (
+              <Button variant="outline" size="sm" onClick={onEditForm}>
+                이 단계 문항 편집
+              </Button>
+            )}
+          </div>
+          {entry && (entry.formRevision ?? 1) < (setting?.revision ?? 1) && (
+            <p className="iw-readonly-note">
+              새 활동지가 배포되었으며, 이 기록은 처음 작성할 때의 문항을
+              유지합니다.
+            </p>
+          )}
           {setting?.dueDate && (
             <p
               className={`iw-due ${isLate(setting.dueDate, entry?.status) ? "iw-overdue" : ""}`}
@@ -1804,14 +1887,16 @@ function StageWorkspace({
                 {inquiryStages.find((item) => item.id === priorId)?.short}’ 기록
                 참고하기
               </summary>
-              {inquiryStages
-                .find((item) => item.id === priorId)
-                ?.fields.map((field) => (
-                  <div key={field.id}>
-                    <b>{field.label}</b>
-                    <p>{prior.answers[field.id] || "작성 내용 없음"}</p>
-                  </div>
-                ))}
+              {entryStageFields(
+                priorId,
+                board.project.stages.find((item) => item.id === priorId),
+                prior,
+              ).map((field) => (
+                <div key={field.id}>
+                  <b>{field.label}</b>
+                  <p>{prior.answers[field.id] || "작성 내용 없음"}</p>
+                </div>
+              ))}
             </details>
           )}
           {entry || editing ? (
@@ -1823,14 +1908,14 @@ function StageWorkspace({
             >
               <fieldset disabled={busy || uploading}>
                 <legend className="iw-sr-only">{stage.title} 작성 내용</legend>
-                {stage.fields.map((field) =>
+                {fields.map((field) =>
                   editing ? (
                     <label key={field.id} htmlFor={`iw-field-${field.id}`}>
                       {field.label}
                       {field.required && (
                         <span className="iw-required">제출 시 필수</span>
                       )}
-                      {field.options ? (
+                      {inquiryFieldType(field) === "select" ? (
                         <select
                           id={`iw-field-${field.id}`}
                           value={answers[field.id] || ""}
@@ -1843,11 +1928,27 @@ function StageWorkspace({
                             setModified(true);
                           }}
                         >
-                          <option value="">판단을 선택하세요</option>
-                          {field.options.map((option) => (
+                          <option value="">선택해 주세요</option>
+                          {field.options?.map((option) => (
                             <option key={option}>{option}</option>
                           ))}
                         </select>
+                      ) : inquiryFieldType(field) === "short_text" ? (
+                        <input
+                          id={`iw-field-${field.id}`}
+                          type="text"
+                          maxLength={12000}
+                          placeholder={field.placeholder}
+                          value={answers[field.id] || ""}
+                          onChange={(event) => {
+                            setVersion(version);
+                            setAnswers({
+                              ...answers,
+                              [field.id]: event.target.value,
+                            });
+                            setModified(true);
+                          }}
+                        />
                       ) : (
                         <textarea
                           id={`iw-field-${field.id}`}

@@ -14,6 +14,7 @@ import type {
   InquiryProject,
   StageSettings,
 } from "@/lib/inquiry";
+import { entryStageFields } from "@/lib/inquiry";
 
 export type InquiryProfile = { id: string; role: string; displayName: string };
 export type InquiryContext = {
@@ -114,7 +115,10 @@ export function visibleInquiryProject(
       profile.role === "teacher"
         ? project.selectedIds
         : project.selectedIds.filter((id) => id === profile.id),
-    stages: workflow.stages as StageSettings[],
+    stages:
+      profile.role === "teacher" || project.selectedIds.includes(profile.id)
+        ? (workflow.stages as StageSettings[])
+        : [],
     archived: workflow.archived,
   };
 }
@@ -165,6 +169,13 @@ export function serializeInquiryEntry(
     ownerId: entry.stageId === "reflection" ? entry.ownerId : null,
     stageId: entry.stageId as InquiryEntry["stageId"],
     answers: entry.answers,
+    fieldSnapshot: entryStageFields(
+      entry.stageId as InquiryEntry["stageId"],
+      undefined,
+      entry,
+    ),
+    formRevision: entry.formRevision,
+    instructionSnapshot: entry.instructionSnapshot,
     status: entry.status as InquiryEntry["status"],
     version: entry.version,
     feedback: entry.reviewHistory.map((review) => ({

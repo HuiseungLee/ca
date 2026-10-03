@@ -4,24 +4,31 @@ import { accountServiceAvailable } from "@/lib/supabase-auth";
 export async function GET() {
   try {
     if (!env.DB || !env.BUCKET) throw new Error("Storage unavailable");
-    const [database, accountService, , inquirySchema] = await Promise.all([
-      env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>(),
-      accountServiceAvailable(),
-      env.BUCKET.list({ limit: 1 }),
-      env.DB.prepare(
-        "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name IN ('inquiry_workflows', 'inquiry_teams', 'inquiry_entries', 'inquiry_comments')",
-      ).first<{ count: number }>(),
-    ]);
+    const [database, accountService, , inquirySchema, formSchema] =
+      await Promise.all([
+        env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>(),
+        accountServiceAvailable(),
+        env.BUCKET.list({ limit: 1 }),
+        env.DB.prepare(
+          "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name IN ('inquiry_workflows', 'inquiry_teams', 'inquiry_entries', 'inquiry_comments')",
+        ).first<{ count: number }>(),
+        env.DB.prepare(
+          "SELECT count(*) AS count FROM pragma_table_info('inquiry_entries') WHERE name IN ('field_snapshot', 'form_revision')",
+        ).first<{ count: number }>(),
+      ]);
     if (database?.ok !== 1) throw new Error("Database check failed");
     if (inquirySchema?.count !== 4)
       throw new Error("Inquiry schema unavailable");
+    if (formSchema?.count !== 2)
+      throw new Error("Inquiry form schema unavailable");
     return Response.json({
       status: accountService ? "ok" : "degraded",
       database: true,
       uploads: true,
       accountService,
       inquiryProjects: true,
-      schemaVersion: 6,
+      editableInquiryForms: true,
+      schemaVersion: 7,
     });
   } catch {
     return Response.json(

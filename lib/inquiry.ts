@@ -12,12 +12,16 @@ export type StageSettings = {
   id: StageId;
   instruction: string;
   dueDate: string;
+  fields?: InquiryField[];
+  revision?: number;
+  publishedAt?: string;
 };
 export type InquiryField = {
   id: string;
   label: string;
   placeholder: string;
   required: boolean;
+  type?: "short_text" | "long_text" | "select" | "url";
   options?: string[];
 };
 export const inquiryStages: {
@@ -259,6 +263,9 @@ export type InquiryEntry = {
   ownerId: string | null;
   stageId: StageId;
   answers: Record<string, string>;
+  fieldSnapshot?: InquiryField[];
+  formRevision?: number;
+  instructionSnapshot?: string;
   status: EntryStatus;
   version: number;
   feedback: InquiryFeedback[];
@@ -286,6 +293,13 @@ export type InquiryBoard = {
 export type InquiryAction =
   | { action: "create"; title: string; description: string; projectId?: string }
   | {
+      action: "publish_form";
+      projectId: string;
+      stageId: StageId;
+      fields: InquiryField[];
+      revision: number;
+    }
+  | {
       action: "update";
       projectId: string;
       title: string;
@@ -312,6 +326,7 @@ export type InquiryAction =
       answers: Record<string, string>;
       status: "draft" | "submitted";
       version: number;
+      formRevision?: number;
     }
   | {
       action: "review";
@@ -358,9 +373,10 @@ export function stageCoaching(
   answers: Record<string, string>,
   feedback?: InquiryFeedback,
   career?: string,
+  fields?: InquiryField[],
 ): string[] {
   const stage = inquiryStages.find((s) => s.id === stageId)!;
-  const missing = stage.fields.filter(
+  const missing = (fields ?? stage.fields).filter(
     (f) => f.required && !answers[f.id]?.trim(),
   );
   const tips: string[] = [];
@@ -395,4 +411,39 @@ export function stageCoaching(
       `${career || "관심 진로"}에서 활용할 수 있는 탐구 방법 하나를 고르고, 이번 활동에서 직접 한 일을 예로 연결해보세요.`,
     );
   return tips;
+}
+
+export function inquiryFieldType(
+  field: InquiryField,
+): NonNullable<InquiryField["type"]> {
+  return (
+    field.type ??
+    (field.options?.length
+      ? "select"
+      : field.id === "links"
+        ? "url"
+        : "long_text")
+  );
+}
+
+export function publishedStageFields(
+  stageId: StageId,
+  setting?: StageSettings,
+): InquiryField[] {
+  return (
+    setting?.fields ??
+    inquiryStages.find((stage) => stage.id === stageId)!.fields
+  );
+}
+
+/** Started records retain their original questions, including pre-editor legacy records. */
+export function entryStageFields(
+  stageId: StageId,
+  setting?: StageSettings,
+  entry?: Pick<InquiryEntry, "fieldSnapshot">,
+): InquiryField[] {
+  if (!entry) return publishedStageFields(stageId, setting);
+  return entry.fieldSnapshot?.length
+    ? entry.fieldSnapshot
+    : inquiryStages.find((stage) => stage.id === stageId)!.fields;
 }

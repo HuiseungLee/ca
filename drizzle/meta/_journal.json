@@ -43,6 +43,13 @@
       "when": 1790641915888,
       "tag": "0005_puzzling_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790759090754,
+      "tag": "0006_illegal_tinkerer",
+      "breakpoints": true
     }
   ]
 }

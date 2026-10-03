@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 import { getDb } from "@/db";
@@ -11,7 +11,12 @@ import {
   projects,
 } from "@/db/schema";
 import { requireProfile } from "@/lib/auth";
-import { defaultStageSettings, inquiryStages, stageIds } from "@/lib/inquiry";
+import {
+  defaultStageSettings,
+  entryStageFields,
+  inquiryFieldType,
+  stageIds,
+} from "@/lib/inquiry";
 import {
   assertEntryWriter,
   assertInquiryOrigin,
@@ -26,6 +31,39 @@ import {
 } from "@/lib/inquiry-access";
 
 const id = z.string().min(1).max(100);
+const fieldSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/)
+      .refine(
+        (value) =>
+          value !== "prototype" &&
+          !Object.prototype.hasOwnProperty.call(Object.prototype, value),
+      ),
+    label: z.string().trim().min(1).max(300),
+    placeholder: z.string().trim().max(1500),
+    required: z.boolean(),
+    type: z.enum(["short_text", "long_text", "select", "url"]).optional(),
+    options: z
+      .array(z.string().trim().min(1).max(300))
+      .min(1)
+      .max(20)
+      .refine((values) => new Set(values).size === values.length)
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (field) => inquiryFieldType(field) !== "select" || !!field.options?.length,
+    "선택형 문항에는 선택지가 필요합니다.",
+  );
+const fieldsSchema = z
+  .array(fieldSchema)
+  .min(1)
+  .max(20)
+  .refine(
+    (fields) => new Set(fields.map((field) => field.id)).size === fields.length,
+  );
 const settings = z
   .array(
     z.object({
@@ -62,6 +100,13 @@ const actionSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("apply"), projectId: id }),
   z.object({
+    action: z.literal("publish_form"),
+    projectId: id,
+    stageId: z.enum(stageIds),
+    fields: fieldsSchema,
+    revision: z.number().int().min(1),
+  }),
+  z.object({
     action: z.literal("select"),
     projectId: id,
     selectedIds: z.array(id).max(1000),
@@ -81,9 +126,10 @@ const actionSchema = z.discriminatedUnion("action", [
     stageId: z.enum(stageIds),
     answers: z
       .record(z.string().max(12000))
-      .refine((value) => Object.keys(value).length <= 15),
+      .refine((value) => Object.keys(value).length <= 20),
     status: z.enum(["draft", "submitted"]),
     version: z.number().int().min(0),
+    formRevision: z.number().int().min(1).optional().default(1),
   }),
   z.object({
     action: z.literal("review"),
@@ -182,34 +228,28 @@ export async function POST(request: Request) {
             "이미 탐구 단계가 설정된 프로젝트입니다.",
             409,
           );
-        await db
-          .insert(inquiryWorkflows)
-          .values({
+        await db.insert(inquiryWorkflows).values({
+          projectId,
+          stages: defaultStageSettings(),
+          createdAt: now,
+          updatedAt: now,
+        });
+      } else {
+        await db.batch([
+          db.insert(projects).values({
+            id: projectId,
+            title: input.title,
+            description: input.description,
+            createdBy: profile.id,
+            createdAt: now,
+            updatedAt: now,
+          }),
+          db.insert(inquiryWorkflows).values({
             projectId,
             stages: defaultStageSettings(),
             createdAt: now,
             updatedAt: now,
-          });
-      } else {
-        await db.batch([
-          db
-            .insert(projects)
-            .values({
-              id: projectId,
-              title: input.title,
-              description: input.description,
-              createdBy: profile.id,
-              createdAt: now,
-              updatedAt: now,
-            }),
-          db
-            .insert(inquiryWorkflows)
-            .values({
-              projectId,
-              stages: defaultStageSettings(),
-              createdAt: now,
-              updatedAt: now,
-            }),
+          }),
         ]);
       }
       return inquiryJson(
@@ -229,7 +269,11 @@ export async function POST(request: Request) {
     );
     if (input.action === "update") {
       assertTeacher(profile);
-      await db.batch([
+      const stages = stageIds.map((stageId) => ({
+        ...context.workflow.stages.find((stage) => stage.id === stageId),
+        ...input.stages.find((stage) => stage.id === stageId)!,
+      }));
+      const [, changed] = await db.batch([
         db
           .update(projects)
           .set({
@@ -238,18 +282,72 @@ export async function POST(request: Request) {
             status: input.status,
             updatedAt: now,
           })
-          .where(eq(projects.id, input.projectId)),
+          .where(
+            and(
+              eq(projects.id, input.projectId),
+              sql`EXISTS (SELECT 1 FROM inquiry_workflows WHERE project_id = ${input.projectId} AND stages = ${JSON.stringify(context.workflow.stages)})`,
+            ),
+          ),
         db
           .update(inquiryWorkflows)
           .set({
-            stages: stageIds.map(
-              (stageId) => input.stages.find((stage) => stage.id === stageId)!,
-            ),
+            stages,
             archived: input.archived,
             updatedAt: now,
           })
-          .where(eq(inquiryWorkflows.projectId, input.projectId)),
+          .where(
+            and(
+              eq(inquiryWorkflows.projectId, input.projectId),
+              eq(inquiryWorkflows.stages, context.workflow.stages),
+            ),
+          )
+          .returning({ projectId: inquiryWorkflows.projectId }),
       ]);
+      if (!changed.length)
+        throw new InquiryError(
+          "다른 화면에서 프로젝트를 수정했습니다. 새로고침 후 다시 저장해 주세요.",
+          409,
+        );
+    } else if (input.action === "publish_form") {
+      assertTeacher(profile);
+      assertWritable(context);
+      const settings = context.workflow.stages.find(
+        (stage) => stage.id === input.stageId,
+      );
+      if (input.revision !== (settings?.revision ?? 1))
+        throw new InquiryError(
+          "다른 화면에서 문항을 배포했습니다. 새로고침 후 최신 양식을 확인해 주세요.",
+          409,
+        );
+      const stages = stageIds.map((stageId) => {
+        const current =
+          context.workflow.stages.find((stage) => stage.id === stageId) ??
+          defaultStageSettings().find((stage) => stage.id === stageId)!;
+        return stageId === input.stageId
+          ? {
+              ...current,
+              fields: input.fields,
+              revision: input.revision + 1,
+              publishedAt: now,
+            }
+          : current;
+      });
+      const changed = await db
+        .update(inquiryWorkflows)
+        .set({ stages, updatedAt: now })
+        .where(
+          and(
+            eq(inquiryWorkflows.projectId, input.projectId),
+            eq(inquiryWorkflows.stages, context.workflow.stages),
+            eq(inquiryWorkflows.archived, false),
+          ),
+        )
+        .returning({ projectId: inquiryWorkflows.projectId });
+      if (!changed.length)
+        throw new InquiryError(
+          "다른 화면에서 프로젝트나 문항을 수정했습니다. 새로고침 후 다시 배포해 주세요.",
+          409,
+        );
     } else if (input.action === "apply") {
       assertWritable(context);
       if (context.project.status !== "open" || profile.role === "teacher")
@@ -333,14 +431,12 @@ export async function POST(request: Request) {
             ),
           );
       else
-        await db
-          .insert(inquiryTeams)
-          .values({
-            id: crypto.randomUUID(),
-            projectId: input.projectId,
-            createdAt: now,
-            ...values,
-          });
+        await db.insert(inquiryTeams).values({
+          id: crypto.randomUUID(),
+          projectId: input.projectId,
+          createdAt: now,
+          ...values,
+        });
     } else if (input.action === "save") {
       assertWritable(context);
       const team = context.teams.find((item) =>
@@ -390,33 +486,46 @@ export async function POST(request: Request) {
           "확인된 활동은 먼저 임시저장으로 수정한 뒤 다시 제출해 주세요.",
           409,
         );
-      const stage = inquiryStages.find((item) => item.id === input.stageId)!;
+      const setting = context.workflow.stages.find(
+        (item) => item.id === input.stageId,
+      );
+      const formRevision = existing?.formRevision ?? setting?.revision ?? 1;
+      if (input.formRevision !== formRevision)
+        throw new InquiryError(
+          "활동지 문항이 변경되었습니다. 새로고침 후 배포된 양식을 확인해 주세요.",
+          409,
+        );
+      const fields = entryStageFields(input.stageId, setting, existing);
       if (
         Object.keys(input.answers).some(
-          (key) => !stage.fields.some((field) => field.id === key),
+          (key) => !fields.some((field) => field.id === key),
         )
       )
         throw new InquiryError("이 단계에 포함되지 않은 문항이 있습니다.");
       const answers = Object.fromEntries(
-        stage.fields.map((field) => [
+        fields.map((field) => [
           field.id,
           input.answers[field.id]?.trim() ?? "",
         ]),
       );
       if (input.status === "submitted") {
-        if (stage.fields.some((field) => field.required && !answers[field.id]))
+        if (fields.some((field) => field.required && !answers[field.id]))
           throw new InquiryError("필수 문항을 작성한 뒤 제출해 주세요.");
         if (
-          stage.fields.some(
+          fields.some(
             (field) =>
-              field.options && !field.options.includes(answers[field.id]),
+              inquiryFieldType(field) === "select" &&
+              !!answers[field.id] &&
+              !field.options?.includes(answers[field.id]),
           )
         )
           throw new InquiryError(
-            "사실 판단 항목에서 제시된 판단을 선택해 주세요.",
+            "선택형 문항에서 제시된 항목을 선택해 주세요.",
           );
-        if (input.stageId === "sources") {
-          const links = answers.links
+        for (const field of fields.filter(
+          (field) => inquiryFieldType(field) === "url" && answers[field.id],
+        )) {
+          const links = answers[field.id]
             .split(/\r?\n/)
             .map((link) => link.trim())
             .filter(Boolean);
@@ -456,6 +565,8 @@ export async function POST(request: Request) {
       }
       const values = {
         answers,
+        fieldSnapshot: fields,
+        formRevision,
         status: input.status,
         version: input.version + 1,
         updatedAt: now,
@@ -480,27 +591,40 @@ export async function POST(request: Request) {
             409,
           );
       } else {
-        const inserted = await db
-          .insert(inquiryEntries)
-          .values({
-            id: crypto.randomUUID(),
-            projectId: input.projectId,
-            teamId: input.stageId === "reflection" ? null : team.id,
-            ownerId: profile.id,
+        if (!env.DB)
+          throw new InquiryError("저장소에 연결하지 못했습니다.", 503);
+        const inserted = await env.DB.prepare(
+          `
+          INSERT INTO inquiry_entries
+          (id, project_id, team_id, owner_id, scope_key, stage_id, answers, status, version, instruction_snapshot, field_snapshot, form_revision, submitted_at, created_at, updated_at)
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          WHERE EXISTS (SELECT 1 FROM inquiry_workflows WHERE project_id = ? AND stages = ? AND archived = 0)
+          ON CONFLICT DO NOTHING
+        `,
+        )
+          .bind(
+            crypto.randomUUID(),
+            input.projectId,
+            input.stageId === "reflection" ? null : team.id,
+            profile.id,
             scopeKey,
-            stageId: input.stageId,
-            instructionSnapshot:
-              context.workflow.stages.find(
-                (setting) => setting.id === input.stageId,
-              )?.instruction ?? "",
-            createdAt: now,
-            ...values,
-          })
-          .onConflictDoNothing()
-          .returning({ id: inquiryEntries.id });
-        if (!inserted.length)
+            input.stageId,
+            JSON.stringify(answers),
+            input.status,
+            input.version + 1,
+            setting?.instruction ?? "",
+            JSON.stringify(fields),
+            formRevision,
+            values.submittedAt,
+            now,
+            now,
+            input.projectId,
+            JSON.stringify(context.workflow.stages),
+          )
+          .run();
+        if (!inserted.meta.changes)
           throw new InquiryError(
-            "다른 화면에서 저장한 내용이 있습니다. 새로고침 후 확인해 주세요.",
+            "다른 화면에서 활동이나 문항이 변경되었습니다. 새로고침 후 확인해 주세요.",
             409,
           );
       }
@@ -570,18 +694,16 @@ export async function POST(request: Request) {
             403,
           );
       }
-      await db
-        .insert(inquiryComments)
-        .values({
-          id: crypto.randomUUID(),
-          projectId: input.projectId,
-          teamId: team.id,
-          authorId: profile.id,
-          authorName: profile.displayName,
-          kind: input.kind,
-          body: input.content,
-          createdAt: now,
-        });
+      await db.insert(inquiryComments).values({
+        id: crypto.randomUUID(),
+        projectId: input.projectId,
+        teamId: team.id,
+        authorId: profile.id,
+        authorName: profile.displayName,
+        kind: input.kind,
+        body: input.content,
+        createdAt: now,
+      });
     }
     return inquiryJson({
       board: await inquiryBoard(
