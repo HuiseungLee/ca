@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InquiryFormEditor } from "@/components/inquiry-form-editor";
+import { InquiryReferencePanel } from "@/components/inquiry-reference-panel";
 import {
   inquiryStages,
   stageIds,
@@ -29,6 +30,7 @@ import {
   entryStatusLabels,
   entryStageFields,
   inquiryFieldType,
+  inquiryAnswerErrors,
   type InquiryAction,
   type InquiryBoard,
   type InquiryComment,
@@ -51,6 +53,7 @@ type ActionResult = { board?: InquiryBoard; project?: InquiryProject };
 type Act = (
   action: InquiryAction,
   success?: string,
+  onFailure?: (message: string) => void,
 ) => Promise<InquiryBoard | null>;
 type ExistingProject = { id: string; title: string; description: string };
 const commentLabels: Record<InquiryComment["kind"], string> = {
@@ -230,7 +233,7 @@ export function InquiryWorkspace({
     }
   }
 
-  const act: Act = async (action, success = "저장했습니다.") => {
+  const act: Act = async (action, success = "저장했습니다.", onFailure) => {
     if (busy) return null;
     setBusy(true);
     setError("");
@@ -284,9 +287,10 @@ export function InquiryWorkspace({
       onProjectsChanged?.();
       return null;
     } catch (failure) {
-      setError(
-        failure instanceof Error ? failure.message : "저장하지 못했습니다.",
-      );
+      const message =
+        failure instanceof Error ? failure.message : "저장하지 못했습니다.";
+      setError(message);
+      onFailure?.(message);
       return null;
     } finally {
       setBusy(false);
@@ -877,6 +881,9 @@ export function InquiryWorkspace({
                           }
                           onError={setError}
                           onStartFollowup={onStartFollowup}
+                          onNextStage={(next) =>
+                            switchWork(teamId, next, studentId)
+                          }
                           onEditForm={() => {
                             if (canLeave()) {
                               setDirty(false);
@@ -1652,6 +1659,7 @@ function StageWorkspace({
   onError,
   onStartFollowup,
   onEditForm,
+  onNextStage,
 }: {
   board: InquiryBoard;
   team: InquiryTeam;
@@ -1666,6 +1674,7 @@ function StageWorkspace({
   onError: (value: string) => void;
   onStartFollowup: (suggestion: InquirySuggestion) => void;
   onEditForm?: () => void;
+  onNextStage: (stage: StageId) => void;
 }) {
   const entry = stageEntry(board.entries, stageId, team.id, ownerId);
   const [draftAnswers, setAnswers] = useState<Record<string, string>>(
@@ -1680,6 +1689,10 @@ function StageWorkspace({
   const [commentDirty, setCommentDirty] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [saveNotice, setSaveNotice] = useState("");
+  const answerFormRef = useRef<HTMLFormElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const stage = inquiryStages.find((item) => item.id === stageId)!;
   const setting = board.project.stages.find((item) => item.id === stageId);
@@ -1720,16 +1733,39 @@ function StageWorkspace({
     onDirty(dirty);
   }, [dirty, onDirty]);
 
-  async function save(status: "draft" | "submitted") {
+  function changeAnswer(id: string, value: string) {
+    setVersion(version);
+    setAnswers({ ...answers, [id]: value });
+    setModified(true);
+    setFieldErrors((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
     setLocalError("");
+    setSaveNotice("");
+  }
+
+  async function save(status: "draft" | "submitted") {
+    if (!editing || busy || uploading) return;
+    setLocalError("");
+    setSaveNotice("");
+    setFieldErrors({});
     if (status === "submitted") {
-      const missing = fields.filter(
-        (field) => field.required && !answers[field.id]?.trim(),
-      );
-      if (missing.length) {
+      const errors = inquiryAnswerErrors(fields, answers);
+      const invalid = fields.find((field) => errors[field.id]);
+      if (invalid) {
+        setFieldErrors(errors);
         setLocalError(
-          `‘${missing[0].label}’을 작성한 뒤 제출해 주세요. 작성 중이라면 임시저장을 이용하세요.`,
+          `제출하지 못했습니다. ‘${invalid.label}’ 문항을 확인해 주세요. 입력한 내용은 그대로 유지됩니다.`,
         );
+        requestAnimationFrame(() => {
+          const input = answerFormRef.current?.elements.namedItem(
+            invalid.id,
+          ) as HTMLElement | null;
+          input?.focus({ preventScroll: true });
+          input?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
         return;
       }
       if (!priorReady) {
@@ -1753,12 +1789,23 @@ function StageWorkspace({
       status === "draft"
         ? "임시저장했습니다. 나중에 이어 쓸 수 있어요."
         : "제출했습니다. 교사 피드백을 확인하며 다음 단계를 이어가세요.",
+      (message) => {
+        setLocalError(
+          `제출·저장하지 못했습니다. ${message} 입력한 내용은 유지됩니다.`,
+        );
+        requestAnimationFrame(() => errorRef.current?.focus());
+      },
     );
     if (updated) {
       const latest = stageEntry(updated.entries, stageId, team.id, ownerId);
       setAnswers(latest?.answers || answers);
       setVersion(latest?.version || version);
       setModified(false);
+      setSaveNotice(
+        status === "submitted"
+          ? "이 단계 제출이 완료되었습니다. 다음 단계를 이어가세요."
+          : "임시저장했습니다. 나중에 이어서 작성할 수 있습니다.",
+      );
       onDirty(reviewDirty || commentDirty);
     }
   }
@@ -1822,7 +1869,7 @@ function StageWorkspace({
   }
   return (
     <>
-      <div className="iw-work-grid">
+      <div className={`iw-work-grid ${priorId ? "iw-has-reference" : ""}`}>
         <section className="iw-box iw-editor">
           <div className="iw-section-heading">
             <div>
@@ -1880,27 +1927,20 @@ function StageWorkspace({
                 : "다른 모둠이 제출한 기록입니다. 아래 토론에서 질문과 의견을 나눌 수 있어요."}
             </p>
           )}
-          {prior && (
-            <details className="iw-prior">
-              <summary>
-                앞 단계 ‘
-                {inquiryStages.find((item) => item.id === priorId)?.short}’ 기록
-                참고하기
-              </summary>
-              {entryStageFields(
-                priorId,
-                board.project.stages.find((item) => item.id === priorId),
-                prior,
-              ).map((field) => (
-                <div key={field.id}>
-                  <b>{field.label}</b>
-                  <p>{prior.answers[field.id] || "작성 내용 없음"}</p>
-                </div>
-              ))}
-            </details>
+          {priorId && (
+            <div className="iw-reference-mobile">
+              <InquiryReferencePanel
+                board={board}
+                team={team}
+                stageId={stageId}
+                ownerId={ownerId}
+              />
+            </div>
           )}
           {entry || editing ? (
             <form
+              ref={answerFormRef}
+              noValidate
               onSubmit={(event) => {
                 event.preventDefault();
                 void save("submitted");
@@ -1918,15 +1958,17 @@ function StageWorkspace({
                       {inquiryFieldType(field) === "select" ? (
                         <select
                           id={`iw-field-${field.id}`}
+                          name={field.id}
+                          aria-invalid={Boolean(fieldErrors[field.id])}
+                          aria-describedby={
+                            fieldErrors[field.id]
+                              ? `iw-field-error-${field.id}`
+                              : undefined
+                          }
                           value={answers[field.id] || ""}
-                          onChange={(event) => {
-                            setVersion(version);
-                            setAnswers({
-                              ...answers,
-                              [field.id]: event.target.value,
-                            });
-                            setModified(true);
-                          }}
+                          onChange={(event) =>
+                            changeAnswer(field.id, event.target.value)
+                          }
                         >
                           <option value="">선택해 주세요</option>
                           {field.options?.map((option) => (
@@ -1936,35 +1978,60 @@ function StageWorkspace({
                       ) : inquiryFieldType(field) === "short_text" ? (
                         <input
                           id={`iw-field-${field.id}`}
+                          name={field.id}
+                          aria-invalid={Boolean(fieldErrors[field.id])}
+                          aria-describedby={
+                            fieldErrors[field.id]
+                              ? `iw-field-error-${field.id}`
+                              : undefined
+                          }
                           type="text"
                           maxLength={12000}
                           placeholder={field.placeholder}
                           value={answers[field.id] || ""}
-                          onChange={(event) => {
-                            setVersion(version);
-                            setAnswers({
-                              ...answers,
-                              [field.id]: event.target.value,
-                            });
-                            setModified(true);
-                          }}
+                          onChange={(event) =>
+                            changeAnswer(field.id, event.target.value)
+                          }
                         />
                       ) : (
                         <textarea
                           id={`iw-field-${field.id}`}
+                          name={field.id}
+                          aria-invalid={Boolean(fieldErrors[field.id])}
+                          aria-describedby={
+                            fieldErrors[field.id]
+                              ? `iw-field-error-${field.id}`
+                              : inquiryFieldType(field) === "url"
+                                ? `iw-field-help-${field.id}`
+                                : undefined
+                          }
                           rows={field.id === "report" ? 7 : 4}
                           maxLength={12000}
                           placeholder={field.placeholder}
                           value={answers[field.id] || ""}
-                          onChange={(event) => {
-                            setVersion(version);
-                            setAnswers({
-                              ...answers,
-                              [field.id]: event.target.value,
-                            });
-                            setModified(true);
-                          }}
+                          onChange={(event) =>
+                            changeAnswer(field.id, event.target.value)
+                          }
                         />
+                      )}
+                      {inquiryFieldType(field) === "url" && (
+                        <small
+                          className="iw-field-help"
+                          id={`iw-field-help-${field.id}`}
+                        >
+                          http:// 또는 https://로 시작하는 주소를 한 줄에 하나씩
+                          입력하세요. 아직 주소를 찾지 못했다면 임시저장을
+                          이용하세요.
+                        </small>
+                      )}
+                      {fieldErrors[field.id] && (
+                        <span
+                          className="iw-field-error"
+                          id={`iw-field-error-${field.id}`}
+                          role="alert"
+                        >
+                          {fieldErrors[field.id]}
+                        </span>
                       )}
                     </label>
                   ) : (
@@ -2038,7 +2105,12 @@ function StageWorkspace({
                   </div>
                 )}
                 {localError && (
-                  <p className="iw-alert iw-error" role="alert">
+                  <p
+                    className="iw-alert iw-error"
+                    role="alert"
+                    ref={errorRef}
+                    tabIndex={-1}
+                  >
                     {localError}
                   </p>
                 )}
@@ -2084,6 +2156,30 @@ function StageWorkspace({
                         <ArrowRight />
                       </Button>
                     </div>
+                    {saveNotice && !modified && (
+                      <div className="iw-save-result" role="status">
+                        <p>{saveNotice}</p>
+                        {entry?.status !== "draft" &&
+                          stageId !== "reflection" && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() =>
+                                onNextStage(
+                                  stageIds[stageIds.indexOf(stageId) + 1],
+                                )
+                              }
+                            >
+                              다음 단계:{" "}
+                              {
+                                inquiryStages[stageIds.indexOf(stageId) + 1]
+                                  .short
+                              }
+                              <ArrowRight size={16} />
+                            </Button>
+                          )}
+                      </div>
+                    )}
                   </>
                 )}
               </fieldset>
@@ -2097,6 +2193,16 @@ function StageWorkspace({
           )}
         </section>
         <aside className="iw-side-stack">
+          {priorId && (
+            <div className="iw-reference-desktop">
+              <InquiryReferencePanel
+                board={board}
+                team={team}
+                stageId={stageId}
+                ownerId={ownerId}
+              />
+            </div>
+          )}
           <section className="iw-coaching">
             <span className="iw-eyebrow">
               <Lightbulb size={17} />

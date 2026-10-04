@@ -15,6 +15,7 @@ import {
   defaultStageSettings,
   entryStageFields,
   inquiryFieldType,
+  inquiryAnswerErrors,
   stageIds,
 } from "@/lib/inquiry";
 import {
@@ -509,40 +510,10 @@ export async function POST(request: Request) {
         ]),
       );
       if (input.status === "submitted") {
-        if (fields.some((field) => field.required && !answers[field.id]))
-          throw new InquiryError("필수 문항을 작성한 뒤 제출해 주세요.");
-        if (
-          fields.some(
-            (field) =>
-              inquiryFieldType(field) === "select" &&
-              !!answers[field.id] &&
-              !field.options?.includes(answers[field.id]),
-          )
-        )
-          throw new InquiryError(
-            "선택형 문항에서 제시된 항목을 선택해 주세요.",
-          );
-        for (const field of fields.filter(
-          (field) => inquiryFieldType(field) === "url" && answers[field.id],
-        )) {
-          const links = answers[field.id]
-            .split(/\r?\n/)
-            .map((link) => link.trim())
-            .filter(Boolean);
-          if (
-            links.length > 20 ||
-            links.some((link) => {
-              try {
-                return !["http:", "https:"].includes(new URL(link).protocol);
-              } catch {
-                return true;
-              }
-            })
-          )
-            throw new InquiryError(
-              "출처 링크는 http:// 또는 https:// 주소를 한 줄에 하나씩 입력해 주세요.",
-            );
-        }
+        const errors = inquiryAnswerErrors(fields, answers);
+        const invalid = fields.find((field) => errors[field.id]);
+        if (invalid)
+          throw new InquiryError(`‘${invalid.label}’: ${errors[invalid.id]}`);
         const position = stageIds.indexOf(input.stageId);
         if (position > 0) {
           const [previous] = await db

@@ -802,6 +802,39 @@
   gap: 22px;
   align-items: start;
 }
+.iw-editor [aria-invalid="true"] {
+  border-color: #cb3f48;
+  background: #fffafa;
+}
+.iw-field-error {
+  display: block;
+  margin-top: 8px;
+  color: #a72432;
+  font-size: 13px;
+  line-height: 1.75;
+  font-weight: 500;
+}
+.iw-field-help {
+  display: block;
+  margin-top: 7px;
+  color: #667795;
+  font-size: 12px;
+  line-height: 1.7;
+  font-weight: 400;
+}
+.iw-save-result {
+  margin-top: 16px;
+  padding: 15px;
+  border: 1px solid #b9dfce;
+  background: #f2fbf6;
+  color: #226047;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.iw-save-result p {
+  margin: 0 0 9px;
+}
 .iw-editor {
   padding: 29px;
   min-width: 0;

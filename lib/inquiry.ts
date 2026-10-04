@@ -426,6 +426,50 @@ export function inquiryFieldType(
   );
 }
 
+/** Shared submission checks; drafts intentionally allow incomplete answers. */
+export function inquiryAnswerErrors(
+  fields: InquiryField[],
+  answers: Record<string, string>,
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const field of fields) {
+    const value = answers[field.id]?.trim() || "";
+    if (!value) {
+      if (field.required)
+        errors[field.id] =
+          "필수 문항입니다. 내용을 입력해 주세요. 아직 작성 중이라면 임시저장할 수 있습니다.";
+      continue;
+    }
+    if (
+      inquiryFieldType(field) === "select" &&
+      !field.options?.includes(value)
+    ) {
+      errors[field.id] = "제시된 선택지 중 하나를 선택해 주세요.";
+    }
+    if (inquiryFieldType(field) === "url") {
+      const links = value
+        .split(/\r?\n/)
+        .map((link) => link.trim())
+        .filter(Boolean);
+      if (links.length > 20)
+        errors[field.id] = "링크는 한 문항에 최대 20개까지 입력할 수 있습니다.";
+      else if (
+        links.some((link) => {
+          try {
+            return !["http:", "https:"].includes(new URL(link).protocol);
+          } catch {
+            return true;
+          }
+        })
+      ) {
+        errors[field.id] =
+          "주소가 아닌 내용이 포함되어 있습니다. http:// 또는 https://로 시작하는 실제 기사·영상 주소를 한 줄에 하나씩 입력해 주세요.";
+      }
+    }
+  }
+  return errors;
+}
+
 export function publishedStageFields(
   stageId: StageId,
   setting?: StageSettings,
