@@ -748,6 +748,22 @@
   gap: 10px;
   margin-bottom: 23px;
 }
+.iw-stage-nav.iw-four-stages {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.iw-materials-question {
+  min-width: 0;
+  margin: 24px 0;
+}
+.iw-materials-question h3 {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+@media (max-width: 760px) {
+  .iw-stage-nav.iw-four-stages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .iw-stage-nav > button {
   display: flex;
   flex-direction: column;

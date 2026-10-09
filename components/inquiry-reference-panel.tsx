@@ -2,12 +2,13 @@
 
 import { useId, useState } from "react";
 import { BookOpen, ExternalLink, Paperclip } from "lucide-react";
+import { InquiryMaterialsField } from "@/components/inquiry-materials-field";
 import {
   entryStageFields,
   entryStatusLabels,
-  inquiryStages,
+  getProjectStages,
+  inquiryFieldType,
   stageEntry,
-  stageIds,
   type InquiryBoard,
   type InquiryTeam,
   type StageId,
@@ -25,6 +26,8 @@ export function InquiryReferencePanel({
   stageId: StageId;
   ownerId: string;
 }) {
+  const inquiryStages = getProjectStages(board.project);
+  const stageIds = inquiryStages.map((stage) => stage.id);
   const previous = stageIds.slice(0, stageIds.indexOf(stageId));
   const [selected, setSelected] = useState<StageId>(
     previous.at(-1) || "sources",
@@ -93,7 +96,11 @@ export function InquiryReferencePanel({
               return (
                 <article key={field.id}>
                   <h4>{field.label}</h4>
-                  <p>{text || "작성 내용 없음"}</p>
+                  {inquiryFieldType(field) === "materials" ? (
+                    <InquiryMaterialsField readOnly value={text} />
+                  ) : (
+                    <p>{text || "작성 내용 없음"}</p>
+                  )}
                   {links.length > 0 && (
                     <div className="iw-reference-links">
                       {links.map((link, index) => (

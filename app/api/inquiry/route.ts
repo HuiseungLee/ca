@@ -16,7 +16,9 @@ import {
   entryStageFields,
   inquiryFieldType,
   inquiryAnswerErrors,
-  stageIds,
+  allStageIds,
+  getProjectStages,
+  templateForStages,
 } from "@/lib/inquiry";
 import {
   assertEntryWriter,
@@ -45,7 +47,9 @@ const fieldSchema = z
     label: z.string().trim().min(1).max(300),
     placeholder: z.string().trim().max(1500),
     required: z.boolean(),
-    type: z.enum(["short_text", "long_text", "select", "url"]).optional(),
+    type: z
+      .enum(["short_text", "long_text", "select", "url", "materials"])
+      .optional(),
     options: z
       .array(z.string().trim().min(1).max(300))
       .min(1)
@@ -68,7 +72,7 @@ const fieldsSchema = z
 const settings = z
   .array(
     z.object({
-      id: z.enum(stageIds),
+      id: z.enum(allStageIds),
       instruction: z.string().trim().max(4000),
       dueDate: z
         .string()
@@ -81,14 +85,18 @@ const settings = z
         ),
     }),
   )
-  .length(6)
-  .refine((items) => new Set(items.map((item) => item.id)).size === 6);
+  .min(4)
+  .max(6)
+  .refine(
+    (items) => new Set(items.map((item) => item.id)).size === items.length,
+  );
 const actionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("create"),
     title: z.string().trim().min(1).max(200),
     description: z.string().trim().max(8000),
     projectId: id.optional(),
+    template: z.enum(["factcheck", "fusion"]).optional().default("factcheck"),
   }),
   z.object({
     action: z.literal("update"),
@@ -103,7 +111,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("publish_form"),
     projectId: id,
-    stageId: z.enum(stageIds),
+    stageId: z.enum(allStageIds),
     fields: fieldsSchema,
     revision: z.number().int().min(1),
   }),
@@ -124,7 +132,7 @@ const actionSchema = z.discriminatedUnion("action", [
     action: z.literal("save"),
     projectId: id,
     teamId: id.optional(),
-    stageId: z.enum(stageIds),
+    stageId: z.enum(allStageIds),
     answers: z
       .record(z.string().max(12000))
       .refine((value) => Object.keys(value).length <= 20),
@@ -231,7 +239,7 @@ export async function POST(request: Request) {
           );
         await db.insert(inquiryWorkflows).values({
           projectId,
-          stages: defaultStageSettings(),
+          stages: defaultStageSettings(input.template),
           createdAt: now,
           updatedAt: now,
         });
@@ -247,7 +255,7 @@ export async function POST(request: Request) {
           }),
           db.insert(inquiryWorkflows).values({
             projectId,
-            stages: defaultStageSettings(),
+            stages: defaultStageSettings(input.template),
             createdAt: now,
             updatedAt: now,
           }),
@@ -268,9 +276,25 @@ export async function POST(request: Request) {
       profile,
       input.action !== "apply",
     );
+    const template = templateForStages(context.workflow.stages);
+    const activeStageIds = getProjectStages({ template }).map(
+      (stage) => stage.id,
+    );
+    if (
+      (input.action === "save" || input.action === "publish_form") &&
+      !activeStageIds.includes(input.stageId)
+    )
+      throw new InquiryError("이 프로젝트에 포함되지 않은 단계입니다.");
     if (input.action === "update") {
       assertTeacher(profile);
-      const stages = stageIds.map((stageId) => ({
+      if (
+        input.stages.length !== activeStageIds.length ||
+        input.stages.some((stage) => !activeStageIds.includes(stage.id))
+      )
+        throw new InquiryError(
+          "프로젝트의 활동 단계는 변경할 수 없습니다. 현재 프로젝트 양식을 확인해 주세요.",
+        );
+      const stages = activeStageIds.map((stageId) => ({
         ...context.workflow.stages.find((stage) => stage.id === stageId),
         ...input.stages.find((stage) => stage.id === stageId)!,
       }));
@@ -320,10 +344,10 @@ export async function POST(request: Request) {
           "다른 화면에서 문항을 배포했습니다. 새로고침 후 최신 양식을 확인해 주세요.",
           409,
         );
-      const stages = stageIds.map((stageId) => {
+      const stages = activeStageIds.map((stageId) => {
         const current =
           context.workflow.stages.find((stage) => stage.id === stageId) ??
-          defaultStageSettings().find((stage) => stage.id === stageId)!;
+          defaultStageSettings(template).find((stage) => stage.id === stageId)!;
         return stageId === input.stageId
           ? {
               ...current,
@@ -514,7 +538,7 @@ export async function POST(request: Request) {
         const invalid = fields.find((field) => errors[field.id]);
         if (invalid)
           throw new InquiryError(`‘${invalid.label}’: ${errors[invalid.id]}`);
-        const position = stageIds.indexOf(input.stageId);
+        const position = activeStageIds.indexOf(input.stageId);
         if (position > 0) {
           const [previous] = await db
             .select()
@@ -523,7 +547,7 @@ export async function POST(request: Request) {
               and(
                 eq(inquiryEntries.projectId, input.projectId),
                 eq(inquiryEntries.teamId, team.id),
-                eq(inquiryEntries.stageId, stageIds[position - 1]),
+                eq(inquiryEntries.stageId, activeStageIds[position - 1]),
               ),
             )
             .limit(1);
@@ -650,6 +674,11 @@ export async function POST(request: Request) {
       const team = context.teams.find((item) => item.id === input.teamId);
       if (!team) throw new InquiryError("모둠을 찾을 수 없습니다.", 404);
       if (profile.role !== "teacher" && !team.memberIds.includes(profile.id)) {
+        if (template === "fusion")
+          throw new InquiryError(
+            "우리 모둠의 활동에만 의견을 남길 수 있습니다.",
+            403,
+          );
         const shared = await db
           .select()
           .from(inquiryEntries)

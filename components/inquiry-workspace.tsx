@@ -21,9 +21,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { InquiryFormEditor } from "@/components/inquiry-form-editor";
 import { InquiryReferencePanel } from "@/components/inquiry-reference-panel";
+import { InquiryMaterialsField } from "@/components/inquiry-materials-field";
 import {
-  inquiryStages,
-  stageIds,
+  getProjectStages,
   stageEntry,
   nextStage,
   stageCoaching,
@@ -36,6 +36,7 @@ import {
   type InquiryComment,
   type InquiryEntry,
   type InquiryProject,
+  type InquiryTemplate,
   type InquiryTeam,
   type StageId,
   type StageSettings,
@@ -136,6 +137,10 @@ export function InquiryWorkspace({
   const [formStageId, setFormStageId] = useState<StageId>("sources");
   const [dirty, setDirty] = useState(false);
   const requestNumber = useRef(0);
+  const inquiryStages = getProjectStages(
+    board?.project || { template: "fusion" },
+  );
+  const stageIds = inquiryStages.map((stage) => stage.id);
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -219,7 +224,14 @@ export function InquiryWorkspace({
       setBoard(result);
       setTeamId(targetTeam?.id || "");
       setStudentId(teacher ? targetTeam?.memberIds[0] || "" : profile.id);
-      setStageId(nextStage(result.entries, targetTeam?.id, profile.id));
+      setStageId(
+        nextStage(
+          result.entries,
+          targetTeam?.id,
+          profile.id,
+          getProjectStages(result.project).map((stage) => stage.id),
+        ),
+      );
       setPanel(teacher ? "overview" : "work");
     } catch (failure) {
       if (serial === requestNumber.current)
@@ -257,10 +269,10 @@ export function InquiryWorkspace({
           setActiveId(updated.project.id);
           setCreating(false);
           setPanel("forms");
-          setFormStageId("sources");
+          setFormStageId(getProjectStages(updated.project)[0].id);
           setTeamId("");
           setStudentId("");
-          setStageId("sources");
+          setStageId(getProjectStages(updated.project)[0].id);
         }
         if (activeRef.current === updated.project.id) setBoard(updated);
         if (
@@ -338,7 +350,7 @@ export function InquiryWorkspace({
           <h1>{teacher ? "탐구 프로젝트 관리" : "탐구 프로젝트"}</h1>
           <p>
             {teacher
-              ? "주제는 자유롭게, 활동은 여섯 단계로. 모둠의 진행 상황을 살피고 다음 행동을 코칭하세요."
+              ? "융합탐구 4종 양식 또는 팩트체크 6단계로 활동을 운영하고, 모둠의 진행 상황을 살펴보세요."
               : "함께 질문을 찾고, 근거를 확인하고, 나의 다음 탐구로 이어가세요."}
           </p>
         </div>
@@ -382,12 +394,17 @@ export function InquiryWorkspace({
 
       {!activeId && (
         <>
-          <div className="iw-journey" aria-label="프로젝트 활동 순서">
+          <p className="iw-muted">
+            융합탐구 활동 흐름 · 기존 팩트체크 프로젝트는 6단계로 운영됩니다.
+          </p>
+          <div className="iw-journey" aria-label="융합탐구 프로젝트 활동 순서">
             {inquiryStages.map((stage, index) => (
               <div key={stage.id}>
                 <span>{index + 1}</span>
                 <b>{stage.short}</b>
-                {index < 5 && <ChevronRight size={14} aria-hidden="true" />}
+                {index < inquiryStages.length - 1 && (
+                  <ChevronRight size={14} aria-hidden="true" />
+                )}
               </div>
             ))}
           </div>
@@ -441,7 +458,11 @@ export function InquiryWorkspace({
                         "주장을 수집하고 근거를 검증하며 함께 결과물을 완성하는 프로젝트입니다."}
                     </p>
                     <div className="iw-project-meta">
-                      <span>6단계 탐구</span>
+                      <span>
+                        {project.template === "fusion"
+                          ? "융합탐구 · 4종 양식"
+                          : "팩트체크 · 6단계"}
+                      </span>
                       {teacher ? (
                         <span>
                           신청 {project.applicantIds.length}명 · 선발{" "}
@@ -502,7 +523,7 @@ export function InquiryWorkspace({
               </h3>
               <p>
                 {teacher
-                  ? "주제와 안내를 입력하면 같은 여섯 단계로 여러 프로젝트를 운영할 수 있습니다."
+                  ? "프로젝트 만들기에서 활동 유형을 선택하면 작성 양식이 함께 준비됩니다."
                   : "교사가 프로젝트를 열면 이곳에서 참가 신청하고 활동을 이어갈 수 있어요."}
               </p>
               {teacher && !creating && (
@@ -571,7 +592,9 @@ export function InquiryWorkspace({
                     </small>
                   )}
                   <small>
-                    모둠 기록은 참가자에게 · 개인 성찰은 본인과 교사에게
+                    {board.project.template === "fusion"
+                      ? "모둠 기록은 같은 모둠과 교사에게 · 개인 성찰은 본인과 교사에게"
+                      : "모둠 기록은 참가자에게 · 개인 성찰은 본인과 교사에게"}
                   </small>
                 </div>
               </section>
@@ -701,7 +724,7 @@ export function InquiryWorkspace({
                               );
                               switchWork(
                                 event.target.value,
-                                "sources",
+                                inquiryStages[0].id,
                                 teacher ? team?.memberIds[0] : profile.id,
                               );
                             }}
@@ -752,6 +775,7 @@ export function InquiryWorkspace({
                                         board.entries,
                                         ownTeam.id,
                                         profile.id,
+                                        stageIds,
                                       ),
                                   )?.title
                                 }
@@ -770,6 +794,7 @@ export function InquiryWorkspace({
                                     board.entries,
                                     ownTeam.id,
                                     profile.id,
+                                    stageIds,
                                   ),
                                   profile.id,
                                 )
@@ -780,7 +805,10 @@ export function InquiryWorkspace({
                             </Button>
                           </div>
                         )}
-                      <div className="iw-stage-nav" aria-label="활동 단계">
+                      <div
+                        className={`iw-stage-nav ${board.project.template === "fusion" ? "iw-four-stages" : ""}`}
+                        aria-label="활동 단계"
+                      >
                         {inquiryStages
                           .filter(
                             (stage) =>
@@ -925,6 +953,7 @@ function CreateProject({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [template, setTemplate] = useState<InquiryTemplate>("fusion");
   return (
     <form
       className="iw-box iw-create"
@@ -933,6 +962,7 @@ function CreateProject({
         void act(
           {
             action: "create",
+            template,
             title,
             description,
             ...(projectId ? { projectId } : {}),
@@ -950,6 +980,27 @@ function CreateProject({
           </p>
         </div>
       </div>
+      <label>
+        활동 유형
+        <select
+          value={template}
+          onChange={(event) => {
+            setTemplate(event.target.value as InquiryTemplate);
+            onDirty(true);
+          }}
+        >
+          <option value="fusion">
+            융합탐구 프로젝트 · 계획서 / 물품 신청서 / 심화 보고서 / 성찰 일지
+          </option>
+          <option value="factcheck">
+            팩트체크 프로젝트 · 주장 수집부터 개인 성찰까지 6단계
+          </option>
+        </select>
+      </label>
+      <p className="iw-muted">
+        활동 유형은 생성 후 변경할 수 없습니다. 각 양식의 문항·안내·마감일은
+        편집할 수 있습니다.
+      </p>
       {existing.length > 0 && (
         <label>
           시작 방식
@@ -1001,7 +1052,11 @@ function CreateProject({
         />
       </label>
       <div className="iw-actions">
-        <p>주장 수집부터 개인 성찰까지 여섯 단계가 함께 만들어집니다.</p>
+        <p>
+          {template === "fusion"
+            ? "활동 전 계획서·물품 신청서, 활동 후 심화 보고서는 모둠장 제출 · 성찰 일지는 전원 개별 제출"
+            : "주장 수집부터 개인 성찰까지 여섯 단계가 함께 만들어집니다."}
+        </p>
         <Button type="submit" disabled={busy || !title.trim()}>
           <Plus />
           {busy ? "만드는 중…" : "프로젝트 만들기"}
@@ -1020,6 +1075,7 @@ function TeacherOverview({
   open: (teamId: string, stage: StageId, owner?: string) => void;
   onSettings: () => void;
 }) {
+  const inquiryStages = getProjectStages(board.project);
   const waiting = board.entries.filter((entry) => entry.status === "submitted");
   const revisions = board.entries.filter(
     (entry) => entry.status === "revision",
@@ -1206,6 +1262,7 @@ function TeacherSettings({
   act: Act;
   onDirty: (value: boolean) => void;
 }) {
+  const inquiryStages = getProjectStages(board.project);
   const [title, setTitle] = useState(board.project.title);
   const [description, setDescription] = useState(board.project.description);
   const [stages, setStages] = useState<StageSettings[]>(board.project.stages);
@@ -1676,13 +1733,46 @@ function StageWorkspace({
   onEditForm?: () => void;
   onNextStage: (stage: StageId) => void;
 }) {
+  const inquiryStages = getProjectStages(board.project);
+  const stageIds = inquiryStages.map((stage) => stage.id);
   const entry = stageEntry(board.entries, stageId, team.id, ownerId);
-  const [draftAnswers, setAnswers] = useState<Record<string, string>>(
-    entry?.answers || {},
-  );
+  const [initialAnswers] = useState<Record<string, string>>(() => {
+    if (entry) return entry.answers;
+    if (board.project.template !== "fusion") return {};
+    const now = new Date();
+    const defaults: Record<string, string> = {
+      school_year: String(now.getFullYear()),
+      team_name: team.name,
+      leader_name: nameOf(board, team.representativeId),
+      student_name: profile.displayName,
+      signature: profile.displayName,
+      written_date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
+    };
+    // Only prefill unchanged default questions; custom questions may reuse an id.
+    const defaultsFields = inquiryStages.find(
+      (item) => item.id === stageId,
+    )!.fields;
+    return Object.fromEntries(
+      entryStageFields(
+        stageId,
+        board.project.stages.find((item) => item.id === stageId),
+      )
+        .filter(
+          (field) =>
+            defaults[field.id] &&
+            defaultsFields.some(
+              (original) =>
+                original.id === field.id && original.label === field.label,
+            ),
+        )
+        .map((field) => [field.id, defaults[field.id]]),
+    );
+  });
+  const [draftAnswers, setAnswers] =
+    useState<Record<string, string>>(initialAnswers);
   const [draftVersion, setVersion] = useState(entry?.version || 0);
   const [modified, setModified] = useState(false);
-  const answers = modified ? draftAnswers : entry?.answers || {};
+  const answers = modified ? draftAnswers : entry?.answers || initialAnswers;
   const version = modified ? draftVersion : entry?.version || 0;
   const [review, setReview] = useState("");
   const [reviewDirty, setReviewDirty] = useState(false);
@@ -1726,6 +1816,7 @@ function StageWorkspace({
       ? board.people.find((person) => person.id === ownerId)?.career
       : profile.career,
     fields,
+    board.project.template,
   );
   const dirty = modified || reviewDirty || commentDirty;
 
@@ -1760,9 +1851,11 @@ function StageWorkspace({
           `제출하지 못했습니다. ‘${invalid.label}’ 문항을 확인해 주세요. 입력한 내용은 그대로 유지됩니다.`,
         );
         requestAnimationFrame(() => {
-          const input = answerFormRef.current?.elements.namedItem(
-            invalid.id,
-          ) as HTMLElement | null;
+          const input =
+            (answerFormRef.current?.elements.namedItem(
+              invalid.id,
+            ) as HTMLElement | null) ||
+            document.getElementById(`iw-field-${invalid.id}`);
           input?.focus({ preventScroll: true });
           input?.scrollIntoView({ behavior: "smooth", block: "center" });
         });
@@ -1860,7 +1953,7 @@ function StageWorkspace({
       question:
         originalAnswer("next") ||
         "이번 프로젝트에서 더 확인하고 싶은 질문은 무엇인가요?",
-      reason: `${board.project.title} 프로젝트의 개인 성찰에서 이어지는 탐구입니다. 진로 연결: ${originalAnswer("career") || profile.career || "관심 분야 탐색"}`,
+      reason: `${board.project.title} 프로젝트의 개인 성찰에서 이어지는 탐구입니다. 진로 연결: ${originalAnswer("career") || profile.career || "관심 분야 탐색"}${board.project.template === "fusion" && originalAnswer("reflection") ? `\n나의 탐구 성찰: ${originalAnswer("reflection")}` : ""}`,
       method:
         "개인 성찰에서 적은 다음 행동을 실행하고, 새로운 근거와 관점의 변화를 기록하세요.",
       output: "후속 탐구 보고서와 근거 자료",
@@ -1890,6 +1983,13 @@ function StageWorkspace({
                 setting?.instruction ||
                 stage.description}
           </p>
+          {board.project.template === "fusion" && (
+            <p className="iw-private-note">
+              {stageId === "reflection"
+                ? "활동 후 · 모둠장 포함 전원 개별 제출"
+                : `${stageId === "report" ? "활동 후" : "활동 전"} · 모둠장만 작성·제출 · 모둠원과 교사에게 공개`}
+            </p>
+          )}
           <div className="iw-form-version">
             <span>
               활동지 {entry?.formRevision ?? startedForm.revision}판 ·{" "}
@@ -1949,7 +2049,44 @@ function StageWorkspace({
               <fieldset disabled={busy || uploading}>
                 <legend className="iw-sr-only">{stage.title} 작성 내용</legend>
                 {fields.map((field) =>
-                  editing ? (
+                  inquiryFieldType(field) === "materials" ? (
+                    <div className="iw-materials-question" key={field.id}>
+                      <h3>
+                        {field.label}{" "}
+                        {field.required && (
+                          <span className="iw-required">제출 시 필수</span>
+                        )}
+                      </h3>
+                      <p className="iw-field-help">{field.placeholder}</p>
+                      <InquiryMaterialsField
+                        id={`iw-field-${field.id}`}
+                        value={
+                          (editing ? answers : entry?.answers)?.[field.id] || ""
+                        }
+                        readOnly={!editing}
+                        onChange={
+                          editing
+                            ? (value) => changeAnswer(field.id, value)
+                            : undefined
+                        }
+                        invalid={Boolean(fieldErrors[field.id])}
+                        describedBy={
+                          fieldErrors[field.id]
+                            ? `iw-field-error-${field.id}`
+                            : undefined
+                        }
+                      />
+                      {fieldErrors[field.id] && (
+                        <p
+                          className="iw-field-error"
+                          id={`iw-field-error-${field.id}`}
+                          role="alert"
+                        >
+                          {fieldErrors[field.id]}
+                        </p>
+                      )}
+                    </div>
+                  ) : editing ? (
                     <label key={field.id} htmlFor={`iw-field-${field.id}`}>
                       {field.label}
                       {field.required && (
@@ -2308,12 +2445,20 @@ function StageWorkspace({
               <section className="iw-followup">
                 <span className="iw-eyebrow">이번 탐구에서 다음 탐구로</span>
                 <h3>나의 다음 질문을 이어가요</h3>
-                <p>{entry.answers.next}</p>
+                <p>
+                  {board.project.template === "fusion"
+                    ? "내가 배운 점을 바탕으로 다음 탐구 질문을 정해보세요."
+                    : entry.answers.next}
+                </p>
                 <Button variant="outline" onClick={startFollowup}>
                   개별 탐구 과제로 이어가기
                   <ArrowRight />
                 </Button>
-                <small>제출한 성찰의 다음 계획을 새 과제에 담아줍니다.</small>
+                <small>
+                  {board.project.template === "fusion"
+                    ? "제출한 탐구 성찰을 새 과제의 제안 배경으로 가져옵니다."
+                    : "제출한 성찰의 다음 계획을 새 과제에 담아줍니다."}
+                </small>
               </section>
             )}
         </aside>

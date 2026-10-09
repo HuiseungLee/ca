@@ -14,7 +14,7 @@ import type {
   InquiryProject,
   StageSettings,
 } from "@/lib/inquiry";
-import { entryStageFields } from "@/lib/inquiry";
+import { entryStageFields, templateForStages } from "@/lib/inquiry";
 
 export type InquiryProfile = { id: string; role: string; displayName: string };
 export type InquiryContext = {
@@ -120,6 +120,7 @@ export function visibleInquiryProject(
         ? (workflow.stages as StageSettings[])
         : [],
     archived: workflow.archived,
+    template: templateForStages(workflow.stages),
   };
 }
 export function canReadInquiryEntry(
@@ -132,6 +133,8 @@ export function canReadInquiryEntry(
   if (!context.project.selectedIds.includes(profile.id)) return false;
   if (entry.stageId === "reflection") return entry.ownerId === profile.id;
   const team = context.teams.find((item) => item.id === entry.teamId);
+  if (templateForStages(context.workflow.stages) === "fusion")
+    return !!team && team.memberIds.includes(profile.id);
   return (
     !!team && (team.memberIds.includes(profile.id) || entry.status !== "draft")
   );
@@ -212,6 +215,12 @@ export async function inquiryBoard(
       )
       .map((entry) => entry.teamId),
   );
+  const privateTeams =
+    profile.role !== "teacher" &&
+    templateForStages(context.workflow.stages) === "fusion";
+  const visibleTeams = privateTeams
+    ? context.teams.filter((team) => team.memberIds.includes(profile.id))
+    : context.teams;
   const peopleIds =
     profile.role === "teacher"
       ? [
@@ -221,7 +230,14 @@ export async function inquiryBoard(
             ...entries.map((entry) => entry.ownerId),
           ]),
         ]
-      : context.project.selectedIds;
+      : privateTeams
+        ? [
+            ...new Set([
+              profile.id,
+              ...visibleTeams.flatMap((team) => team.memberIds),
+            ]),
+          ].filter((id) => context.project.selectedIds.includes(id))
+        : context.project.selectedIds;
   const people = peopleIds.length
     ? await db
         .select({
@@ -234,7 +250,7 @@ export async function inquiryBoard(
     : [];
   return {
     project: visibleInquiryProject(context, profile),
-    teams: context.teams.map((team) => ({
+    teams: visibleTeams.map((team) => ({
       id: team.id,
       projectId: team.projectId,
       name: team.name,

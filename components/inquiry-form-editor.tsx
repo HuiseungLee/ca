@@ -12,9 +12,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { InquiryMaterialsField } from "@/components/inquiry-materials-field";
 import {
   inquiryFieldType,
-  inquiryStages,
+  getProjectStages,
   publishedStageFields,
   type InquiryAction,
   type InquiryBoard,
@@ -31,6 +32,7 @@ const typeLabels: Record<FieldType, string> = {
   long_text: "긴 글",
   select: "선택형",
   url: "링크",
+  materials: "물품 신청 표 (20만 원 이내)",
 };
 
 function draftFields(fields: InquiryField[]): DraftField[] {
@@ -62,7 +64,7 @@ export function InquiryFormEditor({
   busy,
   onPublish,
   onDirty,
-  initialStageId = "sources",
+  initialStageId,
 }: {
   board: InquiryBoard;
   busy: boolean;
@@ -70,21 +72,24 @@ export function InquiryFormEditor({
   onDirty: (value: boolean) => void;
   initialStageId?: StageId;
 }) {
-  const [stageId, setStageId] = useState<StageId>(initialStageId);
+  const inquiryStages = getProjectStages(board.project);
+  const initial =
+    inquiryStages.find((stage) => stage.id === initialStageId)?.id ||
+    inquiryStages[0].id;
+  const [stageId, setStageId] = useState<StageId>(initial);
   const stage = inquiryStages.find((item) => item.id === stageId)!;
   const setting = board.project.stages.find((item) => item.id === stageId);
   const [fields, setFields] = useState<DraftField[]>(() =>
     draftFields(
       publishedStageFields(
-        initialStageId,
-        board.project.stages.find((item) => item.id === initialStageId),
+        initial,
+        board.project.stages.find((item) => item.id === initial),
       ),
     ),
   );
   const [revision, setRevision] = useState(
     () =>
-      board.project.stages.find((item) => item.id === initialStageId)
-        ?.revision ?? 1,
+      board.project.stages.find((item) => item.id === initial)?.revision ?? 1,
   );
   const [baseline, setBaseline] = useState(() => JSON.stringify(fields));
   const [publishing, setPublishing] = useState(false);
@@ -307,13 +312,16 @@ export function InquiryFormEditor({
         <div>
           <h2>프로젝트에 맞는 활동지를 준비하세요</h2>
           <p>
-            여섯 단계의 기본 활동지가 준비되어 있습니다. 질문을 수정하고, 학생
-            화면을 미리 본 뒤 배포하세요.
+            {inquiryStages.length}종의 기본 활동지가 준비되어 있습니다. 질문을
+            수정하고, 학생 화면을 미리 본 뒤 배포하세요.
           </p>
         </div>
       </div>
 
-      <nav className="ife-stage-nav" aria-label="편집할 활동 단계">
+      <nav
+        className={`ife-stage-nav ${board.project.template === "fusion" ? "ife-four-stages" : ""}`}
+        aria-label="편집할 활동 단계"
+      >
         {inquiryStages.map((item, index) => (
           <button
             key={item.id}
@@ -604,6 +612,33 @@ export function InquiryFormEditor({
               </legend>
               {fields.map((field, index) => {
                 const type = inquiryFieldType(field);
+                if (type === "materials")
+                  return (
+                    <div className="ife-materials-preview" key={field.id}>
+                      <p className="ife-preview-label">
+                        {index + 1}. {field.label || "물품 신청 표"}{" "}
+                        {field.required && <small>필수</small>}
+                      </p>
+                      <small>{field.placeholder}</small>
+                      <InquiryMaterialsField
+                        readOnly
+                        value={JSON.stringify([
+                          {
+                            name: "예시: 실험용 비커",
+                            specification: "500mL",
+                            s2b: "",
+                            quantity: "3",
+                            unitPrice: "10000",
+                            shipping: "5000",
+                          },
+                        ])}
+                      />
+                      <small>
+                        위 물품은 미리보기 예시입니다. 학생은 행을 추가하거나
+                        ‘신청할 물품 없음’을 선택할 수 있습니다.
+                      </small>
+                    </div>
+                  );
                 return (
                   <label key={field.id} htmlFor={`ife-preview-${field.id}`}>
                     <span className="ife-preview-label">

@@ -1,12 +1,25 @@
 // node --experimental-strip-types scripts/qa-inquiry-validation.mjs
 import assert from "node:assert/strict";
-import {
+import { registerHooks } from "node:module";
+// Resolve the application's local alias for Node's type-stripped unit checks.
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === "@/lib/inquiry-materials") {
+      return nextResolve(
+        new URL("../lib/inquiry-materials.ts", import.meta.url).href,
+        context,
+      );
+    }
+    return nextResolve(specifier, context);
+  },
+});
+const {
   inquiryAnswerErrors,
   inquiryStages,
   entryStageFields,
   stageEntry,
   stageIds,
-} from "../lib/inquiry.ts";
+} = await import("../lib/inquiry.ts");
 
 let checks = 0;
 function check(actual, expected) {
