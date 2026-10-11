@@ -22,6 +22,7 @@ import {
 } from "@/lib/inquiry";
 import {
   assertEntryWriter,
+  assertStageWritable,
   assertInquiryOrigin,
   assertTeacher,
   assertWritable,
@@ -30,6 +31,7 @@ import {
   InquiryError,
   inquiryFailure,
   inquiryJson,
+  inquiryWriteGuard,
   visibleInquiryProject,
 } from "@/lib/inquiry-access";
 
@@ -91,6 +93,17 @@ const settings = z
     (items) => new Set(items.map((item) => item.id)).size === items.length,
   );
 const actionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("release"),
+    projectId: id,
+    phase: z.enum(["applications", "outcomes"]),
+    released: z.boolean(),
+  }),
+  z.object({
+    action: z.literal("start_application"),
+    projectId: id,
+    teamName: z.string().trim().min(1).max(100),
+  }),
   z.object({
     action: z.literal("create"),
     title: z.string().trim().min(1).max(200),
@@ -274,9 +287,12 @@ export async function POST(request: Request) {
     const context = await inquiryContext(
       input.projectId,
       profile,
-      input.action !== "apply",
+      input.action !== "apply" && input.action !== "start_application",
     );
     const template = templateForStages(context.workflow.stages);
+    const managedFusion =
+      template === "fusion" &&
+      context.workflow.stages.some((stage) => typeof stage.released === "boolean");
     const activeStageIds = getProjectStages({ template }).map(
       (stage) => stage.id,
     );
@@ -285,7 +301,135 @@ export async function POST(request: Request) {
       !activeStageIds.includes(input.stageId)
     )
       throw new InquiryError("이 프로젝트에 포함되지 않은 단계입니다.");
-    if (input.action === "update") {
+    if (input.action === "release") {
+      assertTeacher(profile);
+      assertWritable(context);
+      if (template !== "fusion")
+        throw new InquiryError(
+          "신청·활동 후 양식 배부는 융합탐구 프로젝트에서 사용할 수 있습니다.",
+        );
+      const phaseIds =
+        input.phase === "applications"
+          ? ["plan", "materials"]
+          : ["report", "reflection"];
+      const stages = context.workflow.stages.map((stage) =>
+        phaseIds.includes(stage.id)
+          ? { ...stage, released: input.released }
+          : stage,
+      );
+      const changed = await db
+        .update(inquiryWorkflows)
+        .set({ stages, updatedAt: now })
+        .where(
+          and(
+            eq(inquiryWorkflows.projectId, input.projectId),
+            eq(inquiryWorkflows.stages, context.workflow.stages),
+            eq(inquiryWorkflows.archived, false),
+          ),
+        )
+        .returning({ projectId: inquiryWorkflows.projectId });
+      if (!changed.length)
+        throw new InquiryError(
+          "다른 화면에서 프로젝트나 양식을 변경했습니다. 새로고침 후 다시 배부해 주세요.",
+          409,
+        );
+    } else if (input.action === "start_application") {
+      assertWritable(context);
+      if (profile.role !== "student" || template !== "fusion")
+        throw new InquiryError(
+          "학생 계정으로 융합탐구 프로젝트 신청을 시작할 수 있습니다.",
+          403,
+        );
+      const existingTeam = context.teams.find((team) =>
+        team.memberIds.includes(profile.id),
+      );
+      if (existingTeam) {
+        if (!context.project.selectedIds.includes(profile.id))
+          throw new InquiryError(
+            "이전에 배정된 모둠이 있습니다. 참가 권한은 교사에게 확인해 주세요.",
+            403,
+          );
+        return inquiryJson({ board: await inquiryBoard(context, profile) });
+      }
+      if (context.project.status !== "open")
+        throw new InquiryError(
+          "신청을 받고 있는 프로젝트에서만 모둠을 만들 수 있습니다.",
+          409,
+        );
+      if (
+        ["plan", "materials"].some(
+          (stageId) =>
+            context.workflow.stages.find((stage) => stage.id === stageId)
+              ?.released === false,
+        )
+      )
+        throw new InquiryError(
+          "교사가 활동 계획서와 물품 신청서를 배부한 뒤 신청할 수 있습니다.",
+          409,
+        );
+      if (!env.DB) throw new InquiryError("저장소에 연결하지 못했습니다.", 503);
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(JSON.stringify([input.projectId, profile.id])),
+      );
+      const teamId = `application:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+      // One atomic batch: only a newly inserted own-team grants access. A racing
+      // duplicate request must not restore access that a teacher has removed.
+      await env.DB.batch([
+        env.DB.prepare(
+          `
+          INSERT INTO inquiry_teams (id, project_id, name, representative_id, member_ids, created_at, updated_at)
+          SELECT ?, ?, ?, ?, json_array(?), ?, ?
+          WHERE EXISTS (SELECT 1 FROM projects WHERE id = ? AND status = 'open')
+          AND EXISTS (SELECT 1 FROM inquiry_workflows WHERE project_id = ? AND stages = ? AND archived = 0)
+          AND NOT EXISTS (SELECT 1 FROM inquiry_teams t, json_each(t.member_ids) member WHERE t.project_id = ? AND member.value = ?)
+          ON CONFLICT DO NOTHING
+        `,
+        ).bind(
+          teamId,
+          input.projectId,
+          input.teamName,
+          profile.id,
+          profile.id,
+          now,
+          now,
+          input.projectId,
+          input.projectId,
+          JSON.stringify(context.workflow.stages),
+          input.projectId,
+          profile.id,
+        ),
+        env.DB.prepare(
+          `
+          UPDATE projects SET
+            applicant_ids = CASE WHEN EXISTS (SELECT 1 FROM json_each(projects.applicant_ids) WHERE value = ?) THEN applicant_ids ELSE json_insert(applicant_ids, '$[#]', ?) END,
+            selected_ids = CASE WHEN EXISTS (SELECT 1 FROM json_each(projects.selected_ids) WHERE value = ?) THEN selected_ids ELSE json_insert(selected_ids, '$[#]', ?) END,
+            updated_at = ?
+          WHERE id = ? AND changes() = 1
+          AND EXISTS (SELECT 1 FROM inquiry_teams WHERE id = ? AND project_id = projects.id AND representative_id = ?)
+        `,
+        ).bind(
+          profile.id,
+          profile.id,
+          profile.id,
+          profile.id,
+          now,
+          input.projectId,
+          teamId,
+          profile.id,
+        ),
+      ]);
+      const refreshed = await inquiryContext(input.projectId, profile, false);
+      if (
+        !refreshed.project.selectedIds.includes(profile.id) ||
+        !refreshed.teams.some((team) => team.memberIds.includes(profile.id))
+      )
+        throw new InquiryError(
+          "신청 상태가 변경되었습니다. 새로고침 후 확인하거나 교사에게 문의해 주세요.",
+          409,
+        );
+      return inquiryJson({ board: await inquiryBoard(refreshed, profile) });
+    } else if (input.action === "update") {
       assertTeacher(profile);
       if (
         input.stages.length !== activeStageIds.length ||
@@ -410,10 +554,22 @@ export async function POST(request: Request) {
         students.some((student) => student.role !== "student")
       )
         throw new InquiryError("학생 참가자 목록을 확인해 주세요.");
-      await db
+      const changed = await db
         .update(projects)
         .set({ selectedIds, updatedAt: now })
-        .where(eq(projects.id, input.projectId));
+        .where(
+          and(
+            eq(projects.id, input.projectId),
+            eq(projects.applicantIds, context.project.applicantIds),
+            eq(projects.selectedIds, context.project.selectedIds),
+          ),
+        )
+        .returning({ id: projects.id });
+      if (!changed.length)
+        throw new InquiryError(
+          "새로운 신청이나 참가자 변경이 있습니다. 새로고침 후 다시 저장해 주세요.",
+          409,
+        );
     } else if (input.action === "team") {
       assertTeacher(profile);
       assertWritable(context);
@@ -445,23 +601,58 @@ export async function POST(request: Request) {
         memberIds,
         updatedAt: now,
       };
-      if (input.id)
-        await db
+      // A student can now start an application while a teacher is assigning
+      // teams. Repeat the membership checks in the write itself so the two
+      // requests cannot leave one student in two teams.
+      const teamId = input.id ?? crypto.randomUUID();
+      const memberJson = JSON.stringify(memberIds);
+      const teamWriteGuard = sql`
+        EXISTS (SELECT 1 FROM inquiry_workflows WHERE project_id = ${input.projectId} AND archived = 0)
+        AND NOT EXISTS (
+          SELECT 1 FROM json_each(${memberJson}) requested
+          WHERE NOT EXISTS (
+            SELECT 1 FROM projects p, json_each(p.selected_ids) selected
+            WHERE p.id = ${input.projectId} AND selected.value = requested.value
+          )
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM inquiry_teams t, json_each(t.member_ids) member
+          WHERE t.project_id = ${input.projectId} AND t.id <> ${teamId}
+          AND member.value IN (SELECT value FROM json_each(${memberJson}))
+        )
+      `;
+      let changed = false;
+      if (input.id) {
+        const currentTeam = context.teams.find((team) => team.id === input.id)!;
+        const updated = await db
           .update(inquiryTeams)
           .set(values)
           .where(
             and(
               eq(inquiryTeams.id, input.id),
               eq(inquiryTeams.projectId, input.projectId),
+              eq(inquiryTeams.memberIds, currentTeam.memberIds),
+              eq(inquiryTeams.representativeId, currentTeam.representativeId),
+              eq(inquiryTeams.updatedAt, currentTeam.updatedAt),
+              teamWriteGuard,
             ),
-          );
-      else
-        await db.insert(inquiryTeams).values({
-          id: crypto.randomUUID(),
-          projectId: input.projectId,
-          createdAt: now,
-          ...values,
-        });
+          )
+          .returning({ id: inquiryTeams.id });
+        changed = updated.length > 0;
+      } else {
+        const inserted = await db.run(sql`
+          INSERT INTO inquiry_teams (id, project_id, name, representative_id, member_ids, created_at, updated_at)
+          SELECT ${teamId}, ${input.projectId}, ${input.name}, ${input.representativeId}, ${memberJson}, ${now}, ${now}
+          WHERE ${teamWriteGuard}
+          ON CONFLICT DO NOTHING
+        `);
+        changed = inserted.meta.changes > 0;
+      }
+      if (!changed)
+        throw new InquiryError(
+          "참가자나 모둠 배정이 변경되었습니다. 새로고침 후 다시 저장해 주세요.",
+          409,
+        );
     } else if (input.action === "save") {
       assertWritable(context);
       const team = context.teams.find((item) =>
@@ -486,6 +677,7 @@ export async function POST(request: Request) {
           "모둠 대표만 모둠 활동을 저장할 수 있습니다.",
           403,
         );
+      await assertStageWritable(context, input.stageId, team.id);
       const scopeKey =
         input.stageId === "reflection"
           ? `person:${profile.id}`
@@ -539,7 +731,7 @@ export async function POST(request: Request) {
         if (invalid)
           throw new InquiryError(`‘${invalid.label}’: ${errors[invalid.id]}`);
         const position = activeStageIds.indexOf(input.stageId);
-        if (position > 0) {
+        if (position > 0 && !managedFusion) {
           const [previous] = await db
             .select()
             .from(inquiryEntries)
@@ -577,6 +769,7 @@ export async function POST(request: Request) {
             and(
               eq(inquiryEntries.id, existing.id),
               eq(inquiryEntries.version, input.version),
+              inquiryWriteGuard(context, profile, input.stageId, team.id),
             ),
           )
           .returning({ id: inquiryEntries.id });
@@ -586,37 +779,13 @@ export async function POST(request: Request) {
             409,
           );
       } else {
-        if (!env.DB)
-          throw new InquiryError("저장소에 연결하지 못했습니다.", 503);
-        const inserted = await env.DB.prepare(
-          `
+        const inserted = await db.run(sql`
           INSERT INTO inquiry_entries
           (id, project_id, team_id, owner_id, scope_key, stage_id, answers, status, version, instruction_snapshot, field_snapshot, form_revision, submitted_at, created_at, updated_at)
-          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-          WHERE EXISTS (SELECT 1 FROM inquiry_workflows WHERE project_id = ? AND stages = ? AND archived = 0)
+          SELECT ${crypto.randomUUID()}, ${input.projectId}, ${input.stageId === "reflection" ? null : team.id}, ${profile.id}, ${scopeKey}, ${input.stageId}, ${JSON.stringify(answers)}, ${input.status}, ${input.version + 1}, ${setting?.instruction ?? ""}, ${JSON.stringify(fields)}, ${formRevision}, ${values.submittedAt}, ${now}, ${now}
+          WHERE ${inquiryWriteGuard(context, profile, input.stageId, team.id)}
           ON CONFLICT DO NOTHING
-        `,
-        )
-          .bind(
-            crypto.randomUUID(),
-            input.projectId,
-            input.stageId === "reflection" ? null : team.id,
-            profile.id,
-            scopeKey,
-            input.stageId,
-            JSON.stringify(answers),
-            input.status,
-            input.version + 1,
-            setting?.instruction ?? "",
-            JSON.stringify(fields),
-            formRevision,
-            values.submittedAt,
-            now,
-            now,
-            input.projectId,
-            JSON.stringify(context.workflow.stages),
-          )
-          .run();
+        `);
         if (!inserted.meta.changes)
           throw new InquiryError(
             "다른 화면에서 활동이나 문항이 변경되었습니다. 새로고침 후 확인해 주세요.",

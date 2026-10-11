@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   inquiryComments,
@@ -12,9 +12,14 @@ import type {
   InquiryBoard,
   InquiryEntry,
   InquiryProject,
+  StageId,
   StageSettings,
 } from "@/lib/inquiry";
-import { entryStageFields, templateForStages } from "@/lib/inquiry";
+import {
+  entryStageFields,
+  getProjectStages,
+  templateForStages,
+} from "@/lib/inquiry";
 
 export type InquiryProfile = { id: string; role: string; displayName: string };
 export type InquiryContext = {
@@ -102,6 +107,7 @@ export function visibleInquiryProject(
   profile: InquiryProfile,
 ): InquiryProject {
   const { project, workflow } = context;
+  const template = templateForStages(workflow.stages);
   return {
     id: project.id,
     title: project.title,
@@ -120,8 +126,85 @@ export function visibleInquiryProject(
         ? (workflow.stages as StageSettings[])
         : [],
     archived: workflow.archived,
-    template: templateForStages(workflow.stages),
+    template,
+    managed:
+      template === "fusion" &&
+      workflow.stages.some((stage) => typeof stage.released === "boolean"),
+    releasedStageIds: getProjectStages({ template })
+      .filter(
+        (stage) =>
+          workflow.stages.find((setting) => setting.id === stage.id)
+            ?.released !== false,
+      )
+      .map((stage) => stage.id),
   };
+}
+
+function managedFusion(context: InquiryContext) {
+  return (
+    templateForStages(context.workflow.stages) === "fusion" &&
+    context.workflow.stages.some((stage) => typeof stage.released === "boolean")
+  );
+}
+
+/** Readable errors before writing; the SQL predicate below repeats these checks atomically. */
+export async function assertStageWritable(
+  context: InquiryContext,
+  stageId: StageId,
+  teamId: string,
+) {
+  if (!managedFusion(context)) return;
+  if (
+    context.workflow.stages.find((stage) => stage.id === stageId)?.released ===
+    false
+  )
+    throw new InquiryError(
+      "교사가 아직 배부하지 않았거나 작성을 마감한 양식입니다. 배부 상태를 확인해 주세요.",
+      409,
+    );
+  if (stageId !== "report" && stageId !== "reflection") return;
+  const applications = await getDb()
+    .select({ stageId: inquiryEntries.stageId, status: inquiryEntries.status })
+    .from(inquiryEntries)
+    .where(
+      and(
+        eq(inquiryEntries.projectId, context.project.id),
+        eq(inquiryEntries.teamId, teamId),
+        inArray(inquiryEntries.stageId, ["plan", "materials"]),
+      ),
+    );
+  if (
+    !["plan", "materials"].every((id) =>
+      applications.some(
+        (entry) => entry.stageId === id && entry.status === "approved",
+      ),
+    )
+  )
+    throw new InquiryError(
+      "활동 계획서와 물품 신청서를 교사가 모두 확인한 뒤 활동 후 양식을 작성할 수 있습니다.",
+      409,
+    );
+}
+
+/** Close release/approval/membership races, including uploads that await object storage. */
+export function inquiryWriteGuard(
+  context: InquiryContext,
+  profile: InquiryProfile,
+  stageId: StageId,
+  teamId: string,
+) {
+  const approvalRequired =
+    managedFusion(context) &&
+    (stageId === "report" || stageId === "reflection");
+  return sql`
+    EXISTS (SELECT 1 FROM inquiry_workflows WHERE project_id = ${context.project.id} AND stages = ${JSON.stringify(context.workflow.stages)} AND archived = 0)
+    AND EXISTS (SELECT 1 FROM projects p, json_each(p.selected_ids) member WHERE p.id = ${context.project.id} AND member.value = ${profile.id})
+    AND EXISTS (SELECT 1 FROM inquiry_teams t, json_each(t.member_ids) member WHERE t.id = ${teamId} AND t.project_id = ${context.project.id} AND member.value = ${profile.id} AND (${stageId} = 'reflection' OR t.representative_id = ${profile.id}))
+    AND (${approvalRequired ? 1 : 0} = 0 OR (
+      EXISTS (SELECT 1 FROM inquiry_entries WHERE project_id = ${context.project.id} AND team_id = ${teamId} AND stage_id = 'plan' AND status = 'approved')
+      AND EXISTS (SELECT 1 FROM inquiry_entries WHERE project_id = ${context.project.id} AND team_id = ${teamId} AND stage_id = 'materials' AND status = 'approved')
+    ))
+  `;
 }
 export function canReadInquiryEntry(
   entry: typeof inquiryEntries.$inferSelect,

@@ -22,8 +22,13 @@ import { Button } from "@/components/ui/button";
 import { InquiryFormEditor } from "@/components/inquiry-form-editor";
 import { InquiryReferencePanel } from "@/components/inquiry-reference-panel";
 import { InquiryMaterialsField } from "@/components/inquiry-materials-field";
+import { InquiryDistributionPanel } from "@/components/inquiry-distribution-panel";
+import { InquiryDownload } from "@/components/inquiry-download";
 import {
   getProjectStages,
+  isManagedFusion,
+  isStageReleased,
+  applicationApproved,
   stageEntry,
   nextStage,
   stageCoaching,
@@ -264,14 +269,20 @@ export function InquiryWorkspace({
           updated.project,
           ...items.filter((item) => item.id !== updated.project.id),
         ]);
-        if (action.action === "create") {
+        if (
+          action.action === "create" ||
+          action.action === "start_application"
+        ) {
           activeRef.current = updated.project.id;
           setActiveId(updated.project.id);
           setCreating(false);
-          setPanel("forms");
+          setPanel(action.action === "create" ? "forms" : "work");
           setFormStageId(getProjectStages(updated.project)[0].id);
-          setTeamId("");
-          setStudentId("");
+          setTeamId(
+            updated.teams.find((team) => team.memberIds.includes(profile.id))
+              ?.id || "",
+          );
+          setStudentId(action.action === "start_application" ? profile.id : "");
           setStageId(getProjectStages(updated.project)[0].id);
         }
         if (activeRef.current === updated.project.id) setBoard(updated);
@@ -282,6 +293,8 @@ export function InquiryWorkspace({
           action.action === "team" ||
           action.action === "select" ||
           action.action === "publish_form" ||
+          action.action === "release" ||
+          action.action === "start_application" ||
           action.action === "create"
         )
           setDirty(false);
@@ -465,13 +478,18 @@ export function InquiryWorkspace({
                       </span>
                       {teacher ? (
                         <span>
-                          신청 {project.applicantIds.length}명 · 선발{" "}
+                          신청 {project.applicantIds.length}명 ·{" "}
+                          {isManagedFusion(project)
+                            ? "활동 공간 참여 "
+                            : "선발 "}
                           {project.selectedIds.length}명
                         </span>
                       ) : (
                         <span>
                           {selected
-                            ? "참가 확정"
+                            ? isManagedFusion(project)
+                              ? "활동 공간 참여 중"
+                              : "참가 확정"
                             : applied
                               ? "참가 승인 대기"
                               : "모둠 활동 + 개인 성찰"}
@@ -486,6 +504,24 @@ export function InquiryWorkspace({
                         프로젝트 열기
                         <ArrowRight />
                       </Button>
+                    ) : isManagedFusion(project) &&
+                      project.status === "open" &&
+                      !project.archived ? (
+                      isStageReleased(project, "plan") &&
+                      isStageReleased(project, "materials") ? (
+                        <StartInquiryApplication
+                          project={project}
+                          profile={profile}
+                          busy={busy}
+                          act={act}
+                          applied={applied}
+                        />
+                      ) : (
+                        <p className="iw-wait">
+                          교사가 신청서·물품 신청서를 배부하면 작성을 시작할 수
+                          있습니다.
+                        </p>
+                      )
                     ) : applied ? (
                       <p className="iw-wait">
                         <Clock3 size={16} />
@@ -598,6 +634,47 @@ export function InquiryWorkspace({
                   </small>
                 </div>
               </section>
+              <InquiryDistributionPanel
+                board={board}
+                teacher={teacher}
+                teamId={ownTeam?.id}
+                busy={busy || dirty}
+                onRelease={(action) => {
+                  if (dirty) return;
+                  void act(
+                    action,
+                    action.released
+                      ? "양식을 배부했습니다. 작성 권한이 있는 학생에게 열립니다."
+                      : "양식을 회수했습니다. 기존 기록은 조회·다운로드할 수 있습니다.",
+                  );
+                }}
+              />
+              <section
+                className="iw-export-panel"
+                aria-label="프로젝트 기록 다운로드"
+              >
+                <div>
+                  <h3>
+                    {teacher
+                      ? "전체 모둠·학생 기록 다운로드"
+                      : "우리 모둠 기록·나의 성찰 다운로드"}
+                  </h3>
+                  <p>
+                    문서 DOCX · 엑셀 XLSX · CSV로 저장합니다. HWP·구형 XLS 원본
+                    형식은 제공하지 않습니다.
+                  </p>
+                  <p>다른 학생의 개인 성찰은 교사만 내려받을 수 있습니다.</p>
+                </div>
+                <InquiryDownload
+                  projectId={board.project.id}
+                  disabled={!board.entries.length}
+                  label={
+                    teacher
+                      ? "프로젝트 기록 내려받기"
+                      : "나의 프로젝트 기록 내려받기"
+                  }
+                />
+              </section>
               {board.project.archived && (
                 <p className="iw-alert">
                   보관된 프로젝트입니다. 기록을 조회할 수 있으며, 교사가 운영
@@ -683,7 +760,9 @@ export function InquiryWorkspace({
                   onPublish={(action) =>
                     act(
                       action,
-                      "문항을 저장·배포했습니다. 이 단계를 새로 시작하는 참가자에게 적용됩니다.",
+                      isManagedFusion(board.project)
+                        ? "문항을 저장했습니다. 학생 작성 시점은 ‘배부와 진행 관리’에서 별도로 설정하세요."
+                        : "문항을 저장·배포했습니다. 이 단계를 새로 시작하는 참가자에게 적용됩니다.",
                     )
                   }
                 />
@@ -698,6 +777,18 @@ export function InquiryWorkspace({
                         교사가 모둠을 배정하면 이곳에서 첫 활동을 시작할 수
                         있어요.
                       </p>
+                      {isManagedFusion(board.project) &&
+                        isStageReleased(board.project, "plan") &&
+                        board.project.status === "open" &&
+                        !board.project.archived && (
+                          <StartInquiryApplication
+                            project={board.project}
+                            profile={profile}
+                            busy={busy}
+                            act={act}
+                            applied
+                          />
+                        )}
                     </div>
                   ) : !board.teams.length ? (
                     <div className="iw-empty">
@@ -845,6 +936,10 @@ export function InquiryWorkspace({
                                 </span>
                                 <b>{stage.short}</b>
                                 <Status entry={entry} />
+                                {isManagedFusion(board.project) &&
+                                  !isStageReleased(board.project, stage.id) && (
+                                    <small>미배부 · 읽기 전용</small>
+                                  )}
                                 {settings?.dueDate && (
                                   <small
                                     className={
@@ -939,6 +1034,78 @@ export function InquiryWorkspace({
   );
 }
 
+function StartInquiryApplication({
+  project,
+  profile,
+  busy,
+  act,
+  applied,
+}: {
+  project: InquiryProject;
+  profile: Profile;
+  busy: boolean;
+  act: Act;
+  applied: boolean;
+}) {
+  const [teamName, setTeamName] = useState("");
+  return (
+    <div className="iw-application-start">
+      <p>
+        모둠장만 신청서를 시작하세요. 모둠원은 참가 신청 후 교사의 배정을 기다려
+        주세요.
+      </p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (teamName.trim())
+            void act(
+              {
+                action: "start_application",
+                projectId: project.id,
+                teamName: teamName.trim(),
+              },
+              "모둠장 신청 공간이 준비됐습니다. 신청서와 물품 신청서를 제출해 주세요.",
+            );
+        }}
+      >
+        <label>
+          신청할 모둠 이름
+          <input
+            required
+            maxLength={100}
+            value={teamName}
+            onChange={(event) => setTeamName(event.target.value)}
+            placeholder="예: 환경과학 탐구 모둠"
+          />
+        </label>
+        <Button
+          type="submit"
+          disabled={busy || !teamName.trim() || profile.role !== "student"}
+        >
+          모둠장 · 신청서 작성 시작
+        </Button>
+      </form>
+      {applied ? (
+        <small>참가 신청됨 · 모둠원은 교사의 배정을 기다려 주세요.</small>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy || profile.role !== "student"}
+          onClick={() =>
+            void act(
+              { action: "apply", projectId: project.id },
+              "모둠원 참가 신청을 보냈습니다. 교사가 모둠에 배정하면 활동 공간이 열립니다.",
+            )
+          }
+        >
+          모둠원 · 참가 신청
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function CreateProject({
   existing,
   busy,
@@ -967,7 +1134,9 @@ function CreateProject({
             description,
             ...(projectId ? { projectId } : {}),
           },
-          "프로젝트가 준비되었습니다. 참가자를 선발하고 모둠을 구성해 주세요.",
+          template === "fusion"
+            ? "프로젝트가 준비되었습니다. 문항을 확인한 뒤 ‘배부와 진행 관리’에서 신청 양식을 배부해 주세요."
+            : "프로젝트가 준비되었습니다. 참가자를 선발하고 모둠을 구성해 주세요.",
         );
       }}
     >
@@ -1118,7 +1287,17 @@ function TeacherOverview({
       {!board.teams.length ? (
         <div className="iw-empty">
           <Users />
-          <h3>참가자를 선발하고 첫 모둠을 만들어 주세요</h3>
+          <h3>
+            {isManagedFusion(board.project)
+              ? "신청 양식을 배부하고 첫 모둠의 신청을 기다려 주세요"
+              : "참가자를 선발하고 첫 모둠을 만들어 주세요"}
+          </h3>
+          {isManagedFusion(board.project) && (
+            <p>
+              모둠장이 신청서 작성을 시작하면 모둠이 만들어집니다. 운영 설정에서
+              직접 모둠을 구성할 수도 있습니다.
+            </p>
+          )}
           <p>
             신청 {board.project.applicantIds.length}명 · 참가 확정{" "}
             {board.project.selectedIds.length}명
@@ -1456,8 +1635,9 @@ function TeacherSettings({
         <fieldset disabled={locked("selection") || board.project.archived}>
           <legend>참가 신청과 선발</legend>
           <p className="iw-muted">
-            학생이 프로젝트 목록에서 신청하면 아래에 표시됩니다. 선발 후 모둠을
-            배정하세요.
+            {isManagedFusion(board.project)
+              ? "모둠장이 신청서 작성을 시작하면 모둠이 자동으로 만들어집니다. 모둠원은 ‘참가 신청’ 후 아래에서 참가자로 선택하고, 기존 모둠에 배정해 주세요. 참가자 등록과 신청서 ‘확인 완료’는 별도입니다."
+              : "학생이 프로젝트 목록에서 신청하면 아래에 표시됩니다. 선발 후 모둠을 배정하세요."}
           </p>
           {candidateIds.length ? (
             <>
@@ -1793,9 +1973,17 @@ function StageWorkspace({
       entry?.instructionSnapshot ?? setting?.instruction ?? stage.description,
   }));
   const ownTeam = team.memberIds.includes(profile.id);
+  const releaseLocked =
+    isManagedFusion(board.project) && !isStageReleased(board.project, stageId);
+  const approvalLocked =
+    isManagedFusion(board.project) &&
+    (stageId === "report" || stageId === "reflection") &&
+    !applicationApproved(board.entries, team.id);
   const editing =
     !teacher &&
     !board.project.archived &&
+    !releaseLocked &&
+    !approvalLocked &&
     (stageId === "reflection"
       ? ownerId === profile.id && ownTeam
       : ownTeam && team.representativeId === profile.id);
@@ -1803,7 +1991,10 @@ function StageWorkspace({
   const prior = priorId
     ? stageEntry(board.entries, priorId, team.id, ownerId)
     : undefined;
-  const priorReady = !priorId || Boolean(prior && prior.status !== "draft");
+  const priorReady =
+    isManagedFusion(board.project) ||
+    !priorId ||
+    Boolean(prior && prior.status !== "draft");
   const feedback = entry?.feedback.at(-1);
   const fields = editing
     ? startedForm.fields
@@ -2001,6 +2192,20 @@ function StageWorkspace({
               </Button>
             )}
           </div>
+          {entry && (
+            <InquiryDownload
+              projectId={board.project.id}
+              entryId={entry.id}
+              label="이 기록 내려받기"
+            />
+          )}
+          {!teacher && (releaseLocked || approvalLocked) && (
+            <p className="iw-alert" role="status">
+              {releaseLocked
+                ? "교사가 이 양식을 배부하면 작성할 수 있습니다. 저장된 기록은 계속 조회·다운로드할 수 있어요."
+                : "신청서와 물품 신청서에 모두 교사의 ‘확인 완료’가 필요합니다. 교사 피드백을 확인해 주세요."}
+            </p>
+          )}
           {entry && (entry.formRevision ?? 1) < (setting?.revision ?? 1) && (
             <p className="iw-readonly-note">
               새 활동지가 배포되었으며, 이 기록은 처음 작성할 때의 문항을
@@ -2020,13 +2225,16 @@ function StageWorkspace({
               개인 성찰은 작성자와 교사에게만 공개됩니다.
             </p>
           )}
-          {!editing && !teacher && stageId !== "reflection" && (
-            <p className="iw-readonly-note">
-              {ownTeam
-                ? `모둠 대표 ${nameOf(board, team.representativeId)} 학생이 공동 기록을 작성합니다. 아래 토론에 의견과 근거를 남겨 주세요.`
-                : "다른 모둠이 제출한 기록입니다. 아래 토론에서 질문과 의견을 나눌 수 있어요."}
-            </p>
-          )}
+          {!editing &&
+            !teacher &&
+            stageId !== "reflection" &&
+            team.representativeId !== profile.id && (
+              <p className="iw-readonly-note">
+                {ownTeam
+                  ? `모둠 대표 ${nameOf(board, team.representativeId)} 학생이 공동 기록을 작성합니다. 아래 토론에 의견과 근거를 남겨 주세요.`
+                  : "다른 모둠이 제출한 기록입니다. 아래 토론에서 질문과 의견을 나눌 수 있어요."}
+              </p>
+            )}
           {priorId && (
             <div className="iw-reference-mobile">
               <InquiryReferencePanel
@@ -2345,9 +2553,22 @@ function StageWorkspace({
               <Lightbulb size={17} />
               다음 한 걸음
             </span>
-            <h3>이렇게 이어가 보세요</h3>
+            <h3>
+              {!teacher && (releaseLocked || approvalLocked)
+                ? "작성 전 확인해 주세요"
+                : "이렇게 이어가 보세요"}
+            </h3>
             <ul>
-              {tips.map((tip) => (
+              {(!teacher && releaseLocked
+                ? [
+                    "아직 배부되지 않은 양식입니다. 이전 기록을 살펴보고 교사의 배부 안내를 기다려 주세요.",
+                  ]
+                : !teacher && approvalLocked
+                  ? [
+                      "신청서와 물품 신청서가 모두 ‘확인 완료’되면 작성할 수 있어요. 신청 양식의 교사 피드백을 확인해 주세요.",
+                    ]
+                  : tips
+              ).map((tip) => (
                 <li key={tip}>{tip}</li>
               ))}
             </ul>
@@ -2538,8 +2759,9 @@ function Discussion({
           </span>
           <h2>{team.name} 토론 공간</h2>
           <p>
-            해당 프로젝트 참가 학생과 교사가 볼 수 있습니다. 다른 모둠을 선택해
-            질문해 보세요.
+            {board.project.template === "fusion"
+              ? "같은 모둠의 학생과 교사가 볼 수 있습니다. 활동 과정의 질문과 근거를 함께 나누세요."
+              : "해당 프로젝트 참가 학생과 교사가 볼 수 있습니다. 다른 모둠을 선택해 질문해 보세요."}
           </p>
         </div>
         <span className="iw-pill">{comments.length}개 의견</span>

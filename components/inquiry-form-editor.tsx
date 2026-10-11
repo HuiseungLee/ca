@@ -16,6 +16,8 @@ import { InquiryMaterialsField } from "@/components/inquiry-materials-field";
 import {
   inquiryFieldType,
   getProjectStages,
+  isManagedFusion,
+  isStageReleased,
   publishedStageFields,
   type InquiryAction,
   type InquiryBoard,
@@ -55,8 +57,8 @@ function dateLabel(value?: string) {
   if (!value) return "기본 활동지 준비됨";
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? "배포됨"
-    : `${date.toLocaleDateString("ko-KR")} ${date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 배포`;
+    ? "저장됨"
+    : `${date.toLocaleDateString("ko-KR")} ${date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 저장`;
 }
 
 export function InquiryFormEditor({
@@ -73,6 +75,7 @@ export function InquiryFormEditor({
   initialStageId?: StageId;
 }) {
   const inquiryStages = getProjectStages(board.project);
+  const managed = isManagedFusion(board.project);
   const initial =
     inquiryStages.find((stage) => stage.id === initialStageId)?.id ||
     inquiryStages[0].id;
@@ -121,7 +124,7 @@ export function InquiryFormEditor({
     if (
       dirty &&
       !window.confirm(
-        "아직 배포하지 않은 문항 변경이 있습니다. 변경 내용을 저장하지 않고 다른 단계로 이동할까요?",
+        "아직 저장하지 않은 문항 변경이 있습니다. 변경 내용을 저장하지 않고 다른 단계로 이동할까요?",
       )
     )
       return;
@@ -198,7 +201,7 @@ export function InquiryFormEditor({
       return;
     setFields((current) => current.filter((item) => item.id !== field.id));
     setNotice(
-      "편집 중인 활동지에서 문항을 삭제했습니다. 저장·배포하면 반영됩니다.",
+      "편집 중인 활동지에서 문항을 삭제했습니다. 문항을 저장하면 반영됩니다.",
     );
     setError("");
   }
@@ -276,7 +279,7 @@ export function InquiryFormEditor({
       });
       if (!updated) {
         setError(
-          "문항을 저장·배포하지 못했습니다. 편집 내용은 유지되어 있습니다. 화면 위쪽의 오류 안내를 확인해 주세요.",
+          "문항을 저장하지 못했습니다. 편집 내용은 유지되어 있습니다. 화면 위쪽의 오류 안내를 확인해 주세요.",
         );
         return;
       }
@@ -288,12 +291,14 @@ export function InquiryFormEditor({
       setBaseline(JSON.stringify(saved));
       setRevision(updatedSetting?.revision ?? revision + 1);
       setNotice(
-        `‘${stage.title}’ 활동지를 저장·배포했습니다. 새로 작성을 시작하는 참가자에게 적용됩니다.`,
+        managed
+          ? `‘${stage.title}’ 문항을 저장했습니다. 배부 여부는 ‘배부와 진행 관리’에서 설정하세요. 이미 작성 중인 기록의 문항은 유지됩니다.`
+          : `‘${stage.title}’ 활동지를 저장·배포했습니다. 새로 작성을 시작하는 참가자에게 적용됩니다.`,
       );
       onDirty(false);
     } catch (failure) {
       setError(
-        `${failure instanceof Error ? failure.message : "문항을 저장·배포하지 못했습니다."} 편집 내용은 그대로 유지했습니다.`,
+        `${failure instanceof Error ? failure.message : "문항을 저장하지 못했습니다."} 편집 내용은 그대로 유지했습니다.`,
       );
     } finally {
       setPublishing(false);
@@ -340,7 +345,7 @@ export function InquiryFormEditor({
         <div>
           <strong>배포 대상</strong>
           <p>
-            이 프로젝트의 선발된 참가자 전체 · 현재{" "}
+            이 프로젝트의 활동 공간 참가자 · 현재{" "}
             {board.project.selectedIds.length}명
           </p>
         </div>
@@ -356,12 +361,22 @@ export function InquiryFormEditor({
           <strong>문항 변경 적용</strong>
           <p>
             임시저장을 포함해 이미 시작한 기록은 원래 문항을 유지합니다. 변경한
-            문항은 배포 후 새로 시작하는 기록에 적용됩니다.
+            문항은 저장 후 새로 시작하는 기록에 적용됩니다.
             {started > 0 &&
               ` 현재 이 단계에서 시작한 기록은 ${started}건입니다.`}
           </p>
         </div>
       </div>
+      {managed && (
+        <p className="ife-notice" role="status">
+          현재 양식:{" "}
+          {isStageReleased(board.project, stageId)
+            ? "배부 중"
+            : "미배부 · 학생 작성 잠김"}
+          . 여기서는 문항만 저장합니다. 학생에게 작성 권한을 열려면 위 ‘배부와
+          진행 관리’에서 해당 양식을 배부하세요.
+        </p>
+      )}
 
       {board.project.archived && (
         <p className="ife-notice" role="status">
@@ -403,7 +418,7 @@ export function InquiryFormEditor({
               </span>
               <h3>{stage.title} 활동지</h3>
               <p>
-                현재 배포 버전 {serverRevision} ·{" "}
+                현재 문항 버전 {serverRevision} ·{" "}
                 {dateLabel(setting?.publishedAt)}
               </p>
             </div>
@@ -568,14 +583,22 @@ export function InquiryFormEditor({
             <div>
               <b>
                 {dirty
-                  ? "아직 배포하지 않은 변경 내용이 있습니다"
-                  : "현재 배포된 문항입니다"}
+                  ? "아직 저장하지 않은 변경 내용이 있습니다"
+                  : "현재 저장된 문항입니다"}
               </b>
-              <p>미리보기에서 확인한 뒤 저장·배포해 주세요.</p>
+              <p>
+                {managed
+                  ? "문항을 저장한 뒤 ‘배부와 진행 관리’에서 작성 시점을 설정하세요."
+                  : "미리보기에서 확인한 뒤 저장·배포해 주세요."}
+              </p>
             </div>
             <Button type="submit" disabled={locked || !dirty}>
               <Send size={16} />
-              {publishing ? "저장·배포 중…" : "문항 저장·배포"}
+              {publishing
+                ? "저장 중…"
+                : managed
+                  ? "문항 저장"
+                  : "문항 저장·배포"}
             </Button>
           </div>
         </form>
@@ -590,7 +613,7 @@ export function InquiryFormEditor({
               학생 화면 미리보기
             </span>
             <small>
-              {dirty ? "편집 중 · 아직 미배포" : `배포 버전 ${serverRevision}`}
+              {dirty ? "편집 중 · 아직 미저장" : `문항 버전 ${serverRevision}`}
             </small>
           </div>
           <div className="ife-preview-sheet">

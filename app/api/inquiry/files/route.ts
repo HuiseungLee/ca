@@ -3,8 +3,10 @@ import { env } from "cloudflare:workers";
 import { getDb } from "@/db";
 import { inquiryEntries } from "@/db/schema";
 import { requireProfile } from "@/lib/auth";
+import type { StageId } from "@/lib/inquiry";
 import {
   assertEntryWriter,
+  assertStageWritable,
   assertInquiryOrigin,
   assertWritable,
   canReadInquiryEntry,
@@ -12,6 +14,7 @@ import {
   InquiryError,
   inquiryFailure,
   inquiryJson,
+  inquiryWriteGuard,
   serializeInquiryEntry,
 } from "@/lib/inquiry-access";
 
@@ -79,6 +82,17 @@ export async function POST(request: Request) {
     const context = await inquiryContext(entry.projectId, auth.profile);
     assertWritable(context);
     assertEntryWriter(entry, context, auth.profile);
+    const team = context.teams.find((item) =>
+      entry.stageId === "reflection"
+        ? item.memberIds.includes(auth.profile.id)
+        : item.id === entry.teamId,
+    );
+    if (!team)
+      throw new InquiryError(
+        "배정된 모둠에서만 파일을 첨부할 수 있습니다.",
+        403,
+      );
+    await assertStageWritable(context, entry.stageId as StageId, team.id);
     if (entry.status === "approved")
       throw new InquiryError(
         "확인된 활동은 먼저 임시저장으로 수정한 뒤 파일을 첨부해 주세요.",
@@ -108,6 +122,12 @@ export async function POST(request: Request) {
         and(
           eq(inquiryEntries.id, entry.id),
           eq(inquiryEntries.version, version),
+          inquiryWriteGuard(
+            context,
+            auth.profile,
+            entry.stageId as StageId,
+            team.id,
+          ),
         ),
       )
       .returning();

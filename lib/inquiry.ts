@@ -24,6 +24,7 @@ export type StageSettings = {
   fields?: InquiryField[];
   revision?: number;
   publishedAt?: string;
+  released?: boolean;
 };
 export type InquiryField = {
   id: string;
@@ -572,7 +573,7 @@ export const defaultStageSettings = (
     instruction: s.description,
     dueDate: "",
     ...(template === "fusion"
-      ? { fields: s.fields.map((field) => ({ ...field })) }
+      ? { fields: s.fields.map((field) => ({ ...field })), released: false }
       : {}),
   }));
 export type EntryStatus = "draft" | "submitted" | "revision" | "approved";
@@ -592,7 +593,18 @@ export type InquiryProject = {
   stages: StageSettings[];
   archived: boolean;
   template?: InquiryTemplate;
+  managed?: boolean;
+  releasedStageIds?: StageId[];
 };
+export function isManagedFusion(project: InquiryProject) {
+  return project.template === "fusion" && (project.managed ?? project.stages.some((stage) => typeof stage.released === "boolean"));
+}
+export function isStageReleased(project: InquiryProject, stageId: StageId) {
+  return project.releasedStageIds ? project.releasedStageIds.includes(stageId) : project.stages.find((stage) => stage.id === stageId)?.released !== false;
+}
+export function applicationApproved(entries: InquiryEntry[], teamId?: string) {
+  return ["plan", "materials"].every((id) => entries.some((entry) => entry.teamId === teamId && entry.stageId === id && entry.status === "approved"));
+}
 export type InquiryTeam = {
   id: string;
   projectId: string;
@@ -641,6 +653,8 @@ export type InquiryBoard = {
   people: InquiryPerson[];
 };
 export type InquiryAction =
+  | { action: "release"; projectId: string; phase: "applications" | "outcomes"; released: boolean }
+  | { action: "start_application"; projectId: string; teamName: string }
   | {
       action: "create";
       title: string;

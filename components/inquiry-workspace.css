@@ -748,6 +748,112 @@
   gap: 10px;
   margin-bottom: 23px;
 }
+.iw-distribution {
+  margin: 24px 0;
+  padding: 24px;
+  border: 1px solid #dce4f2;
+  border-radius: 18px;
+  background: #fff;
+}
+.iw-distribution-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 18px 0;
+}
+.iw-distribution-grid article {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  border-radius: 12px;
+  padding: 20px;
+  background: #f5f7fc;
+  min-width: 0;
+}
+.iw-distribution-grid h3,
+.iw-export-panel h3 {
+  font-size: 16px;
+  margin: 0;
+}
+.iw-distribution-grid p,
+.iw-export-panel p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #627493;
+  margin: 0;
+}
+.iw-distribution-grid b {
+  color: #324ac0;
+  font-size: 13px;
+  margin-top: auto;
+}
+.iw-distribution-grid button {
+  white-space: normal;
+  height: auto;
+  min-height: 40px;
+}
+.iw-export-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin: 24px 0;
+  padding: 24px;
+  border: 1px solid #dce4f2;
+  border-radius: 18px;
+  background: #fff;
+}
+.iw-download {
+  margin: 14px 0;
+  min-width: 0;
+}
+.iw-download-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.iw-download-controls select {
+  width: auto;
+  min-width: 128px;
+  padding: 9px 12px;
+  border: 1px solid #d3dcec;
+  border-radius: 8px;
+  background: #fff;
+  color: #223354;
+}
+.iw-download small {
+  display: block;
+  margin-top: 8px;
+  color: #687b9b;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.iw-application-start {
+  display: grid;
+  gap: 12px;
+}
+.iw-application-start form {
+  display: grid;
+  gap: 10px;
+}
+.iw-application-start p,
+.iw-application-start small {
+  color: #687b9b;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .iw-distribution-grid {
+    grid-template-columns: 1fr;
+  }
+  .iw-export-panel {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
 .iw-stage-nav.iw-four-stages {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
