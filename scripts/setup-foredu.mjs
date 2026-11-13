@@ -20,7 +20,7 @@ for (const [folder, marker] of [[`${root}/accounts/data`, 'accounts-v1'], [`${ro
   if (entries.some(name => name !== '.foredu-storage')) throw new Error('Data already exists. Stop and plan recovery before initialization.');
   if (entries.includes('.foredu-storage') && readFileSync(`${folder}/.foredu-storage`, 'utf8').trim() !== marker) throw new Error('Unexpected data marker.');
 }
-if (readdirSync(accountSource).some(name => !['server.mjs', 'Dockerfile', 'compose.yml', 'init.sql'].includes(name))) throw new Error('accounts/source is not empty; preserve and inspect its files first.');
+if (readdirSync(accountSource).some(name => !['server.mjs', 'Dockerfile', 'Dockerfile.db', 'compose.yml', 'init.sql'].includes(name))) throw new Error('accounts/source is not empty; preserve and inspect its files first.');
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 const emailPattern = /^[A-Za-z0-9.!#%&*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 let sender; let teachers;
@@ -54,7 +54,7 @@ const values = {
 // Single quotes prevent Compose interpolation. Inputs exclude quote/newline characters.
 writeFileSync(envFile, Object.entries(values).map(([key, value]) => `${key}='${value}'`).join('\n') + '\n', { flag: 'wx', mode: 0o600 });
 chmodSync(envFile, 0o600);
-for (const file of ['server.mjs', 'Dockerfile', 'compose.yml', 'init.sql']) copyFileSync(`${source}/deploy/accounts/${file}`, `${accountSource}/${file}`);
+for (const file of ['server.mjs', 'Dockerfile', 'Dockerfile.db', 'compose.yml', 'init.sql']) copyFileSync(`${source}/deploy/accounts/${file}`, `${accountSource}/${file}`);
 for (const [folder, marker] of [[`${root}/accounts/data`, 'accounts-v1'], [`${root}/careerfolio/data`, 'careerfolio-v1']]) {
   if (!existsSync(`${folder}/.foredu-storage`)) writeFileSync(`${folder}/.foredu-storage`, `${marker}\n`, { flag: 'wx', mode: 0o644 });
 }

@@ -1,0 +1,3 @@
+FROM postgres:16-bookworm
+# NAS ACLs must not decide whether postgres can read its initialization script.
+COPY --chmod=644 init.sql /docker-entrypoint-initdb.d/10-auth-schema.sql

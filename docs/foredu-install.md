@@ -36,6 +36,10 @@ sudo /bin/sh /volume2/webapps/careerfolio/source/scripts/foredu-start.sh
 
 ## 외부 주소
 
+### 초기 SQL 파일 Permission denied 복구
+
+초기 버전에서 NAS의 `init.sql` 바인드 마운트 접근 권한 때문에 초기화가 중단될 수 있었습니다. 수정 버전은 SQL을 DB 이미지 안에 읽기 권한 0644로 포함합니다. 시작 스크립트는 기존 DB가 준비된 뒤 `CREATE SCHEMA IF NOT EXISTS auth`만 적용하여 누락된 스키마를 보완합니다. DB 디렉터리와 `.env`를 삭제하거나 setup을 재실행하지 마세요. 수정 코드를 받은 뒤 `foredu-start.sh`를 다시 실행합니다. Docker/NAS에서의 실제 복구 결과는 로그와 상태로 확인해야 합니다.
+
 DDNS `foredu.synology.me`와 필요한 인증서, 공유기의 TCP 443 전달이 먼저 준비되어야 합니다. NAS 역방향 프록시:
 
 | 소스 | 대상 |

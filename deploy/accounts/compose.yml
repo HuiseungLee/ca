@@ -1,7 +1,9 @@
 name: foredu-accounts
 services:
   db:
-    image: postgres:16-bookworm
+    build:
+      context: .
+      dockerfile: Dockerfile.db
     restart: unless-stopped
     environment:
       POSTGRES_USER: foredu_auth
@@ -10,7 +12,6 @@ services:
       PGDATA: /data/postgres
     entrypoint: ["sh", "-c", "test \"$$(cat /data/.foredu-storage)\" = accounts-v1 || exit 1; chown postgres:postgres /data; exec docker-entrypoint.sh postgres"]
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/10-auth-schema.sql:ro
       - type: bind
         source: /volume2/webapps/accounts/data
         target: /data
