@@ -22,10 +22,10 @@ docker network inspect foredu-shared >/dev/null 2>&1 || docker network create fo
 # Quiet config validation: NEVER print expanded SMTP/JWT/database secrets.
 docker compose --env-file "$ENV_FILE" -f "$ACCOUNTS/compose.yml" config --quiet
 # A previous init-script permission failure can leave a valid DB without the auth
-# schema. Preserve that DB and apply only our idempotent schema creation script.
+# schema. Preserve that DB and apply the idempotent schema/compatibility-role SQL.
 docker compose --env-file "$ENV_FILE" -f "$ACCOUNTS/compose.yml" up -d --build db
 attempt=0
-until docker compose --env-file "$ENV_FILE" -f "$ACCOUNTS/compose.yml" exec -T --user postgres db pg_isready -U foredu_auth -d accounts >/dev/null 2>&1; do
+until docker compose --env-file "$ENV_FILE" -f "$ACCOUNTS/compose.yml" exec -T --user postgres db pg_isready -h 127.0.0.1 -U foredu_auth -d accounts >/dev/null 2>&1; do
   attempt=$((attempt + 1))
   if [ "$attempt" -ge 60 ]; then echo 'Database is not ready. Data preserved; authentication startup skipped.' >&2; exit 1; fi
   sleep 2

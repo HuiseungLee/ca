@@ -38,7 +38,11 @@ sudo /bin/sh /volume2/webapps/careerfolio/source/scripts/foredu-start.sh
 
 ### 초기 SQL 파일 Permission denied 복구
 
-초기 버전에서 NAS의 `init.sql` 바인드 마운트 접근 권한 때문에 초기화가 중단될 수 있었습니다. 수정 버전은 SQL을 DB 이미지 안에 읽기 권한 0644로 포함합니다. 시작 스크립트는 기존 DB가 준비된 뒤 `CREATE SCHEMA IF NOT EXISTS auth`만 적용하여 누락된 스키마를 보완합니다. DB 디렉터리와 `.env`를 삭제하거나 setup을 재실행하지 마세요. 수정 코드를 받은 뒤 `foredu-start.sh`를 다시 실행합니다. Docker/NAS에서의 실제 복구 결과는 로그와 상태로 확인해야 합니다.
+초기 버전에서 NAS의 `init.sql` 바인드 마운트 접근 권한 때문에 초기화가 중단될 수 있었습니다. 수정 버전은 SQL을 DB 이미지 안에 읽기 권한 0644로 포함합니다. 시작 스크립트는 기존 DB가 준비된 뒤 누락된 `auth` 스키마와 호환용 `postgres` 역할을 보완합니다. DB 디렉터리와 `.env`를 삭제하거나 setup을 재실행하지 마세요. 수정 코드를 받은 뒤 `foredu-start.sh`를 다시 실행합니다. Docker/NAS에서의 실제 복구 결과는 로그와 상태로 확인해야 합니다.
+
+### 인증 서버의 `role "postgres" does not exist` 오류
+
+GoTrue v2.197.0의 `20240612123726_enable_rls_update_grants` 마이그레이션은 이름이 `postgres`인 역할에 SELECT 권한을 부여합니다. 사용자 지정 `POSTGRES_USER=foredu_auth`로 초기화한 DB에는 이 역할이 자동 생성되지 않습니다. 초기 SQL은 역할이 없을 때만 로그인·슈퍼유저·DB 생성·역할 생성·복제·RLS 우회 권한이 없는 역할을 추가합니다. 이미 있는 역할은 변경하지 않습니다. 기존 연결 사용자, DB 비밀번호, 회원 데이터는 그대로 유지합니다.
 
 DDNS `foredu.synology.me`와 필요한 인증서, 공유기의 TCP 443 전달이 먼저 준비되어야 합니다. NAS 역방향 프록시:
 
