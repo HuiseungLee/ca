@@ -1,6 +1,6 @@
 export const SHARED_AUTH_COOKIE_NAME = "lhsstart_auth";
 
-const SHARED_AUTH_DOMAIN = "lhsstart.synology.me";
+const SHARED_AUTH_DOMAINS = ["foredu.synology.me", "lhsstart.synology.me"];
 const SHARED_AUTH_MAX_AGE = 60 * 60 * 24 * 30;
 
 export type SharedAuthSession = { access_token: string; refresh_token?: string; expires_at?: number };
@@ -66,7 +66,7 @@ export async function restoreSharedAuthSession(supabaseUrl: string, publishableK
 function writeCookie(value: string, maxAge: number): void {
   if (typeof document === "undefined") return;
   const hostname = window.location.hostname.toLowerCase();
-  const sharedDomain = hostname === SHARED_AUTH_DOMAIN || hostname.endsWith(`.${SHARED_AUTH_DOMAIN}`);
+  const sharedDomain = SHARED_AUTH_DOMAINS.find(domain => hostname === domain || hostname.endsWith(`.${domain}`));
   const secure = window.location.protocol === "https:";
-  document.cookie = [`${SHARED_AUTH_COOKIE_NAME}=${value}`, "Path=/", `Max-Age=${maxAge}`, "SameSite=Lax", ...(sharedDomain ? [`Domain=${SHARED_AUTH_DOMAIN}`] : []), ...(secure ? ["Secure"] : [])].join("; ");
+  document.cookie = [`${SHARED_AUTH_COOKIE_NAME}=${value}`, "Path=/", `Max-Age=${maxAge}`, "SameSite=Lax", ...(sharedDomain ? [`Domain=${sharedDomain}`] : []), ...(secure ? ["Secure"] : [])].join("; ");
 }

@@ -45,7 +45,7 @@ export function SharedAuthGate({ children }: { children: (account: SharedAccount
     setLoading(true); setMessage("");
     try {
       const response = mode === "signup"
-        ? await fetch(window.location.hostname.endsWith(".lhsstart.synology.me") ? "https://literature.lhsstart.synology.me/api/signup" : "/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, role, realName: realName.trim(), nickname: nickname.trim(), teacherInviteCode }) })
+        ? await fetch("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, role, realName: realName.trim(), nickname: nickname.trim(), teacherInviteCode }) })
         : mode === "verify"
           ? await fetch(`${config.url}/auth/v1/verify`, { method: "POST", headers: { apikey: config.key, "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim(), token: verificationCode, type: "email" }) })
           : await fetch(`${config.url}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: config.key, "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
@@ -74,13 +74,13 @@ export function SharedAuthGate({ children }: { children: (account: SharedAccount
 
   return <main className="account-auth-shell"><section className="account-auth-card">
     <div className="account-auth-brand"><span><Compass /></span><b>커리어폴리오</b></div>
-    <p className="eyebrow">LHSSTART ACCOUNT</p><h1>{mode === "signup" ? "계정 만들기" : mode === "verify" ? "이메일 확인" : "통합 로그인"}</h1>
+    <p className="eyebrow">공통 계정</p><h1>{mode === "signup" ? "계정 만들기" : mode === "verify" ? "이메일 확인" : "통합 로그인"}</h1>
     <p>문학·문법·진로 사이트에서 함께 사용하는 계정입니다.</p>{message && <div className="account-auth-message" role="alert">{message}</div>}
     <form onSubmit={authenticate}>
-      {mode === "signup" && <><label>가입 유형<select value={role} onChange={(event) => setRole(event.target.value as "teacher" | "student")}><option value="student">학생</option><option value="teacher">교사</option></select></label>{role === "teacher" && <label>교사 초대 코드<input required type="password" value={teacherInviteCode} onChange={(event) => setTeacherInviteCode(event.target.value)} /></label>}<label>이름<input required value={realName} onChange={(event) => setRealName(event.target.value)} /></label><label>닉네임 <small>최대 7글자</small><input required maxLength={7} value={nickname} onChange={(event) => setNickname(event.target.value)} /></label></>}
+      {mode === "signup" && <>{config?.key === "foredu-public" ? <p>교사는 관리자가 등록한 이메일로 가입해 주세요. 이메일 인증 후 권한이 적용됩니다.</p> : <><label>가입 유형<select value={role} onChange={(event) => setRole(event.target.value as "teacher" | "student")}><option value="student">학생</option><option value="teacher">교사</option></select></label>{role === "teacher" && <label>교사 초대 코드<input required type="password" value={teacherInviteCode} onChange={(event) => setTeacherInviteCode(event.target.value)} /></label>}</>}<label>이름<input required value={realName} onChange={(event) => setRealName(event.target.value)} /></label><label>닉네임 <small>최대 7글자</small><input required maxLength={7} value={nickname} onChange={(event) => setNickname(event.target.value)} /></label></>}
       <label>이메일<input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
       {mode === "verify" ? <label>6자리 확인 코드<input required inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label> : <label>비밀번호<input required minLength={6} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
-      <button className="account-auth-primary" disabled={loading}>{loading ? "처리 중…" : mode === "signup" ? `${role === "teacher" ? "교사" : "학생"} 회원가입` : mode === "verify" ? "코드 확인하고 로그인" : "로그인"}</button>
+      <button className="account-auth-primary" disabled={loading}>{loading ? "처리 중…" : mode === "signup" ? (config?.key === "foredu-public" ? "회원가입" : `${role === "teacher" ? "교사" : "학생"} 회원가입`) : mode === "verify" ? "코드 확인하고 로그인" : "로그인"}</button>
       {mode === "verify" && <button type="button" disabled={loading} onClick={() => void resend()}>확인 코드 다시 받기</button>}
       <button type="button" onClick={() => { setMessage(""); setMode(mode === "login" ? "signup" : "login"); }}>{mode === "login" ? "회원가입으로 이동" : "로그인으로 돌아가기"}</button>
     </form>

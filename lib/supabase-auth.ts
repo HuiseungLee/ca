@@ -19,6 +19,15 @@ export function accountServiceUrl(): string {
   return (env.ACCOUNT_SERVICE_URL || "https://literature.lhsstart.synology.me").replace(/\/$/, "");
 }
 
+export function accountServiceRequired(): boolean {
+  return env.ACCOUNT_SERVICE_REQUIRED === "true";
+}
+
+export async function authApiConfig(): Promise<PublicAuthConfig> {
+  if (accountServiceRequired()) return { url: accountServiceUrl(), key: "foredu-public" };
+  return resolvedSupabasePublicConfig();
+}
+
 export async function accountServiceAvailable(): Promise<boolean> {
   try {
     const response = await fetch(`${accountServiceUrl()}/api/health`, {
@@ -60,6 +69,8 @@ async function getSharedUserFromToken(token: string): Promise<SharedUser | null>
 
   const accountServiceUser = await getSharedUserFromAccountService(token);
   if (accountServiceUser !== undefined) return accountServiceUser;
+  // A failed new account server must not fall back to old accounts or fixed roles.
+  if (accountServiceRequired()) return null;
 
   const { url, key } = await resolvedSupabasePublicConfig();
   if (!url || !key) return null;
@@ -86,6 +97,7 @@ async function getSharedUserFromAccountService(token: string): Promise<SharedUse
     const response = await fetch(`${accountServiceUrl()}/api/session`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
+      signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) return undefined;
     const payload = await response.json() as { user?: unknown };

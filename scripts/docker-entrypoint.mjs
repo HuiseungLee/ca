@@ -1,10 +1,17 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 
 const node = process.execPath;
 const wrangler = "./node_modules/wrangler/bin/wrangler.js";
 const config = "dist/server/wrangler.json";
 const stateDirectory = "/data";
+if (process.env.REQUIRE_DATA_MARKER) {
+  const marker = `${stateDirectory}/.foredu-storage`;
+  if (!existsSync(marker) || readFileSync(marker, "utf8").trim() !== process.env.REQUIRE_DATA_MARKER) {
+    console.error("Expected data volume is missing. Refusing to create an empty database.");
+    process.exit(1);
+  }
+}
 const migrationMarker = `${stateDirectory}/.careerfolio-schema-v1`;
 const sharedAccountMigrationMarker = `${stateDirectory}/.careerfolio-schema-v2`;
 const activityWorkflowMigrationMarker = `${stateDirectory}/.careerfolio-schema-v3`;
@@ -198,6 +205,8 @@ for (const key of [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "ACCOUNT_SERVICE_URL",
+  "ACCOUNT_SERVICE_REQUIRED",
+  "PUBLIC_SITE_URL",
   "TEACHER_EMAILS",
   "STUDENT_EMAILS",
 ]) {

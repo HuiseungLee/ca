@@ -1,0 +1,27 @@
+name: foredu-careerfolio
+services:
+  careerfolio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
+      NEXT_PUBLIC_SUPABASE_URL: https://auth.foredu.synology.me
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: foredu-public
+      ACCOUNT_SERVICE_URL: http://foredu-accounts:3000
+      ACCOUNT_SERVICE_REQUIRED: "true"
+      PUBLIC_SITE_URL: https://ca.foredu.synology.me
+      REQUIRE_DATA_MARKER: careerfolio-v1
+    ports: ["127.0.0.1:7310:3000"]
+    volumes:
+      - type: bind
+        source: /volume2/webapps/careerfolio/data
+        target: /data
+        bind:
+          create_host_path: false
+    networks: [shared]
+networks:
+  shared:
+    external: true
+    name: foredu-shared

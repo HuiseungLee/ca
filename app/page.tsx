@@ -126,9 +126,7 @@ function AuthDialog({
               body: JSON.stringify({ email, password }),
             })
           : await fetch(
-              window.location.hostname.endsWith(".lhsstart.synology.me")
-                ? "https://literature.lhsstart.synology.me/api/signup"
-                : "/api/auth/signup",
+              "/api/auth/signup",
               {
                 method: "POST",
                 headers: { "content-type": "application/json" },

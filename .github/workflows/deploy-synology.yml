@@ -15,6 +15,8 @@ concurrency:
 
 jobs:
   deploy:
+    # Enable only after the new NAS host key, SSH secrets and first-run checks are verified.
+    if: ${{ vars.FOREDU_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -63,4 +65,4 @@ jobs:
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -p "$NAS_PORT" \
             "$NAS_USER@$NAS_HOST" \
-            'sudo -n /bin/sh /volume1/docker/careerfolio/scripts/synology-auto-deploy.sh || { echo "Retrying once after updating the deployment script." >&2; sudo -n /bin/sh /volume1/docker/careerfolio/scripts/synology-auto-deploy.sh; }'
+            'sudo -n /bin/sh /volume2/webapps/careerfolio/source/scripts/foredu-deploy.sh'

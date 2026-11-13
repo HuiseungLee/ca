@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { requireProfile } from "@/lib/auth";
-import { resolvedSupabasePublicConfig } from "@/lib/supabase-auth";
+import { authApiConfig } from "@/lib/supabase-auth";
+import { env } from "cloudflare:workers";
 
 export async function POST(request: Request) {
   const origin = request.headers.get("origin");
   const allowedOrigins = new Set([
     new URL(request.url).origin,
     "https://ca.lhsstart.synology.me",
+    ...(env.PUBLIC_SITE_URL ? [env.PUBLIC_SITE_URL] : []),
   ]);
   if (origin && !allowedOrigins.has(origin))
     return Response.json(
@@ -28,7 +30,7 @@ export async function POST(request: Request) {
         { error: "현재 비밀번호와 8자 이상의 새 비밀번호를 입력해 주세요." },
         { status: 400 },
       );
-    const { url, key } = await resolvedSupabasePublicConfig();
+    const { url, key } = await authApiConfig();
     const verification = await fetch(
       `${url}/auth/v1/token?grant_type=password`,
       {

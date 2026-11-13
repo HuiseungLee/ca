@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { env } from "cloudflare:workers";
 import { getDb } from "@/db";
 import {
   inquiryComments,
@@ -59,6 +60,7 @@ export function assertInquiryOrigin(request: Request) {
       ![
         new URL(request.url).origin,
         "https://ca.lhsstart.synology.me",
+        ...(env.PUBLIC_SITE_URL ? [env.PUBLIC_SITE_URL] : []),
       ].includes(origin))
   )
     throw new InquiryError("같은 사이트에서 다시 시도해 주세요.", 403);

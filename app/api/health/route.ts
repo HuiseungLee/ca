@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { accountServiceAvailable } from "@/lib/supabase-auth";
+import { accountServiceAvailable, accountServiceRequired } from "@/lib/supabase-auth";
 
 export async function GET() {
   try {
@@ -29,7 +29,7 @@ export async function GET() {
       inquiryProjects: true,
       editableInquiryForms: true,
       schemaVersion: 7,
-    });
+    }, { status: !accountService && accountServiceRequired() ? 503 : 200 });
   } catch {
     return Response.json(
       {
