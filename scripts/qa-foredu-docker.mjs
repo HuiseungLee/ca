@@ -59,7 +59,11 @@ try {
   await waitFor(async () => {
     try { return (await fetch('http://127.0.0.1:7320/api/health', { signal: AbortSignal.timeout(5000) })).ok; } catch { return false; }
   }, 'GoTrue and gateway');
-  assert(Number(sql('SELECT count(*) FROM auth.schema_migrations')) > 0);
+  // auth.schema_migrations is a legacy table and may remain empty in this GoTrue
+  // version. Verify actual migration effects rather than its legacy row count.
+  assert.equal(sql("SELECT to_regclass('auth.users') IS NOT NULL AND to_regclass('auth.sessions') IS NOT NULL"), 't');
+  assert.equal(sql("SELECT relrowsecurity FROM pg_class WHERE oid='auth.users'::regclass"), 't');
+  assert.equal(sql("SELECT has_table_privilege('postgres', 'auth.users', 'SELECT')"), 't');
   assert.equal(sql('SELECT id FROM public.foredu_qa_probe'), '42');
   compose(['exec', '-T', 'accounts', 'node', '-e', "if(process.getuid()===0)process.exit(1);require('fs').accessSync('/app/server.mjs',require('fs').constants.R_OK)"]);
   const session = await fetch('http://127.0.0.1:7320/api/session');
