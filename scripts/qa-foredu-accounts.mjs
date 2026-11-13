@@ -14,6 +14,11 @@ server.listen(0, '127.0.0.1'); await once(server, 'listening');
 const base = `http://127.0.0.1:${server.address().port}`;
 let count = 0;
 const check = (a, b) => { assert.deepEqual(a, b); count++; };
+const dockerfile = readFileSync(new URL('../deploy/accounts/Dockerfile', import.meta.url), 'utf8');
+check(/COPY\s+--chown=node:node\s+--chmod=0644\s+server\.mjs/.test(dockerfile), true);
+check(dockerfile.includes('RUN chmod 0755 /app'), true);
+check(dockerfile.indexOf('USER node') < dockerfile.indexOf('RUN node --check /app/server.mjs'), true);
+check(dockerfile.includes('RUN node --check /app/server.mjs'), true);
 const request = (path, body, extra = {}) => fetch(base + path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', ...extra.headers }, ...(body ? { body: JSON.stringify(body) } : {}), ...extra, redirect: 'manual' });
 try {
   check((await request('/api/auth/config')).status, 200);
