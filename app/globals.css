@@ -1404,7 +1404,6 @@ button {
   background: #fff;
   padding: 30px;
   box-shadow: 0 28px 70px rgba(35, 49, 95, 0.13);
-  transform: rotate(1deg);
 }
 .board-head {
   display: flex;
